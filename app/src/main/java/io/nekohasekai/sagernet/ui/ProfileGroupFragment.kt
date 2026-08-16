@@ -638,7 +638,7 @@ import androidx.core.view.size
                 }
 
                 if (proxyEntity.status == 3) {
-                    val err = proxyEntity.error ?: "<?>"
+                    val err = proxyEntity.error ?: getString(R.string.error_placeholder)
                     val msg = Protocols.genFriendlyMsg(err)
                     profileStatus.text = if (msg != err) msg else getString(R.string.unavailable)
                     profileStatus.setOnClickListener {

@@ -301,6 +301,11 @@ fun buildConfig(
 
 
                 // chain rules
+                // 说明：_hack_config_map / _hack_custom_config 是 sing-box 生成的
+                // Outbound_DefaultOptions 上的兜底字段（libcore SingBoxOptions 生成器未
+                // 覆盖的扩展配置）。通过它把 sing-box 支持但生成器未建模的字段
+                // （detour / multiplex / udp_over_tcp / domain_strategy 等）直接注入
+                // 最终 JSON，是兼容 sing-box 扩展配置的临时手段，请勿误删。
                 if (index > 0) {
                     // chain route/proxy rules
                     if (pastEntity!!.needExternal()) {

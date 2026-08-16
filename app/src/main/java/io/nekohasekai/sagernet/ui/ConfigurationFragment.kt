@@ -403,7 +403,7 @@ class ConfigurationFragment @JvmOverloads constructor(
             getString(R.string.action_http),
             getString(R.string.action_shadowsocks),
             getString(R.string.action_vmess),
-            "VLESS",
+            getString(R.string.action_vless),
             getString(R.string.action_trojan),
             getString(R.string.action_trojan_go),
             getString(R.string.action_mieru),
