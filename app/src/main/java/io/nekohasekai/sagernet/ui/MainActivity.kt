@@ -48,6 +48,7 @@ import io.nekohasekai.sagernet.ktx.parseProxies
 import io.nekohasekai.sagernet.ktx.readableMessage
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import moe.matsuri.nb4a.utils.Util
+import java.io.File
 
 class MainActivity : ThemedActivity(),
     SagerConnection.Callback,
@@ -86,11 +87,19 @@ class MainActivity : ThemedActivity(),
         }
 
         binding.fab.setOnClickListener {
-            if (DataStore.serviceState.canStop) SagerNet.stopService() else connect.launch(
-                null
-            )
+            it.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            if (DataStore.serviceState.canStop) {
+                SagerNet.stopService()
+            } else {
+                checkProfileBeforeConnect()
+            }
         }
-        binding.stats.setOnClickListener { if (DataStore.serviceState.connected) binding.stats.testConnection() }
+        binding.stats.setOnClickListener {
+            if (DataStore.serviceState.connected) {
+                it.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                binding.stats.testConnection()
+            }
+        }
 
         setContentView(binding.root)
         changeState(BaseService.State.Idle)
@@ -354,6 +363,16 @@ class MainActivity : ThemedActivity(),
     ) {
         DataStore.serviceState = state
 
+        if (Build.VERSION.SDK_INT >= 30) {
+            when (state) {
+                BaseService.State.Connected ->
+                    binding.fab.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+                BaseService.State.Stopped ->
+                    binding.fab.performHapticFeedback(android.view.HapticFeedbackConstants.REJECT)
+                else -> Unit
+            }
+        }
+
         binding.fab.changeState(state, DataStore.serviceState, animate)
         binding.stats.changeState(state)
         if (msg != null) snackbar(getString(R.string.vpn_error, msg)).show()
@@ -389,6 +408,65 @@ class MainActivity : ThemedActivity(),
 
     private val connect = registerForActivityResult(VpnRequestActivity.StartService()) {
         if (it) snackbar(R.string.vpn_permission_denied).show()
+    }
+
+    private fun checkProfileBeforeConnect() {
+        runOnDefaultDispatcher {
+            val selectedProfile = SagerDatabase.proxyDao.getById(DataStore.selectedProxy)
+            val hasAnyProfile = SagerDatabase.proxyDao.getAll().isNotEmpty()
+            onMainDispatcher {
+                when {
+                    selectedProfile != null -> checkRuleAssetsBeforeConnect()
+
+                    hasAnyProfile -> {
+                        MaterialAlertDialogBuilder(this@MainActivity)
+                            .setTitle(R.string.profile_empty)
+                            .setMessage(R.string.profile_empty_select_hint)
+                            .setPositiveButton(android.R.string.ok, null)
+                            .show()
+                    }
+
+                    else -> {
+                        MaterialAlertDialogBuilder(this@MainActivity)
+                            .setTitle(R.string.profile_empty)
+                            .setMessage(R.string.profile_empty_add_hint)
+                            .setPositiveButton(android.R.string.ok, null)
+                            .show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun checkRuleAssetsBeforeConnect() {
+        if (DataStore.skipRuleAssetsCheck) {
+            connect.launch(null)
+            return
+        }
+        val assetsDir = SagerNet.application.externalAssets
+        val missingAssets = listOf("geoip.db", "geosite.db").filter {
+            !File(assetsDir, it).isFile
+        }
+        if (missingAssets.isEmpty()) {
+            connect.launch(null)
+            return
+        }
+        MaterialAlertDialogBuilder(this).setTitle(R.string.route_assets_missing_title)
+            .setMessage(
+                getString(
+                    R.string.route_assets_missing_message,
+                    missingAssets.joinToString(", ")
+                )
+            )
+            .setPositiveButton(R.string.route_assets_missing_download) { _, _ ->
+                startActivity(Intent(this, AssetsActivity::class.java))
+            }
+            .setNegativeButton(R.string.route_assets_missing_connect_anyway) { _, _ ->
+                DataStore.skipRuleAssetsCheck = true
+                connect.launch(null)
+            }
+            .setNeutralButton(android.R.string.cancel, null)
+            .show()
     }
 
     // may NOT called when app is in background

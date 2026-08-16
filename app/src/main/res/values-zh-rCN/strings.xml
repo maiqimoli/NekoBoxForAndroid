@@ -130,6 +130,7 @@
     <string name="action_import">从剪切板导入</string>
     <string name="action_import_file">从文件中导入</string>
     <string name="action_export_msg">导出成功!</string>
+    <string name="action_export_msg_with_path">已导出到 %s</string>
     <string name="action_export_err">导出失败.</string>
     <string name="action_import_msg">导入成功!</string>
     <string name="action_import_err">导入失败.</string>
@@ -225,6 +226,11 @@
     <string name="file_manager_missing">您的设备缺少 Android 标准文件选择器, 请安装一个, 如 Material Files.</string>
     <string name="need_reload">重载代理服务以应用修改</string>
     <string name="theme">主题颜色</string>
+    <string name="app_language">应用语言</string>
+    <string name="auto_region_time_zone">按出口地区自动切换时区</string>
+    <string name="auto_region_time_zone_summary">连接后根据最终出口节点自动切换系统时区。需要系统或特权 SET_TIME_ZONE 权限。</string>
+    <string name="language_zh_cn">简体中文</string>
+    <string name="language_en">English</string>
     <string name="donate">捐款</string>
     <string name="donate_info">猫猫很可爱 请给猫猫钱</string>
     <string name="extra_headers">附加标头</string>
@@ -260,6 +266,14 @@
     <string name="route_asset_no_update">已为最新</string>
     <string name="route_asset_updated">已更新</string>
     <string name="route_asset_status">本地版本: %s</string>
+    <string name="route_assets_missing_title">缺少规则集</string>
+    <string name="route_assets_missing_message">缺少必需的规则集文件: %1$s。路由规则可能无法加载，连接可能无法正常工作。现在下载？</string>
+    <string name="route_assets_missing_download">下载</string>
+    <string name="route_assets_missing_connect_anyway">仍然连接</string>
+    <string name="profile_empty_select_hint">尚未选择服务器。请在列表中点击选择一个服务器后再连接。</string>
+    <string name="profile_empty_add_hint">还没有任何服务器。请先添加或导入一个服务器。</string>
+    <string name="profile_empty_title">这里还没有服务器</string>
+    <string name="profile_empty_subtitle">添加或导入一个服务器即可开始使用。</string>
     <string name="route_rules_provider">路由资源更新源</string>
     <string name="route_assets">资源</string>
     <string name="route_manage_assets">管理路由资源</string>
@@ -280,6 +294,10 @@
     <string name="always_show_address_sum">始终在配置卡片上显示服务器地址</string>
     <string name="clear_traffic_statistics">清空流量统计数据</string>
     <string name="connection_test">连接测试</string>
+    <string name="chain_hop_single_test">单节点直连测试</string>
+    <string name="chain_hop_prefix_test">经前序中转链路测试</string>
+    <string name="chain_hop_same_as_single">首跳，无需中转</string>
+    <string name="chain_hop_detail">%1$d. %2$s (%3$s)\n   入口：%4$s\n   解析 IP：%5$s\n   单节点直连出口：%6$s\n   前序中转链路：%7$s</string>
     <string name="connection_test_clear_results">清理测试结果</string>
     <string name="connection_test_domain_not_found">域名不存在</string>
     <string name="connection_test_tcp_ping_unavailable">TCPing 不可用</string>

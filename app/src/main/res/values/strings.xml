@@ -164,6 +164,14 @@
     <string name="route_asset_status">Local version: %s</string>
     <string name="route_asset_no_update">No update</string>
     <string name="route_asset_updated">Updated</string>
+    <string name="route_assets_missing_title">Rule sets missing</string>
+    <string name="route_assets_missing_message">Required rule set files are missing: %1$s. Routing rules may fail to load and the connection may not work. Download them now?</string>
+    <string name="route_assets_missing_download">Download</string>
+    <string name="route_assets_missing_connect_anyway">Connect anyway</string>
+    <string name="profile_empty_select_hint">No server selected. Tap a server in the list to select it, then connect.</string>
+    <string name="profile_empty_add_hint">No servers yet. Add or import a server first.</string>
+    <string name="profile_empty_title">No servers here</string>
+    <string name="profile_empty_subtitle">Add or import a server to get started.</string>
     <string name="route_not_asset">Not an asset file: excepted .db, but %s</string>
     <string name="route_opt_bypass_lan">Bypass LAN</string>
     <string name="route_opt_block_ads">Block ADs</string>

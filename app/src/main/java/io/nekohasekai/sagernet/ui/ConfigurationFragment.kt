@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.text.SpannableStringBuilder
+
 import android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
 import android.text.format.Formatter
 import android.text.style.ForegroundColorSpan
@@ -22,17 +23,20 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.net.toUri
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.core.view.size
 import androidx.fragment.app.Fragment
 import androidx.preference.PreferenceDataStore
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
@@ -132,6 +136,9 @@ class ConfigurationFragment @JvmOverloads constructor(
     lateinit var groupPager: ViewPager2
 
     val alwaysShowAddress by lazy { DataStore.alwaysShowAddress }
+    private val expandedChainIds = ConcurrentHashMap.newKeySet<Long>()
+    private val chainHopDetails = ConcurrentHashMap<Long, String>()
+    private val chainHopTesting = ConcurrentHashMap.newKeySet<Long>()
 
     fun getCurrentGroupFragment(): GroupFragment? {
         return try {
@@ -139,6 +146,34 @@ class ConfigurationFragment @JvmOverloads constructor(
         } catch (e: Exception) {
             Logs.e(e)
             null
+        }
+    }
+
+    private fun refreshChainCard(chainId: Long) {
+        runOnMainDispatcher {
+            val adapter = getCurrentGroupFragment()?.adapter ?: return@runOnMainDispatcher
+            val index = adapter.configurationIdList.indexOf(chainId)
+            if (index >= 0) adapter.notifyItemChanged(index)
+        }
+    }
+
+    private fun testChainHops(proxyEntity: ProxyEntity) {
+        if (proxyEntity.type != ProxyEntity.TYPE_CHAIN) return
+        if (!chainHopTesting.add(proxyEntity.id)) return
+        chainHopDetails[proxyEntity.id] = getString(R.string.connection_test_testing)
+        refreshChainCard(proxyEntity.id)
+
+        val context = requireContext().applicationContext
+        runOnDefaultDispatcher {
+            try {
+                ChainHopTester.test(context, proxyEntity) {
+                    chainHopDetails[proxyEntity.id] = it
+                    refreshChainCard(proxyEntity.id)
+                }
+            } finally {
+                chainHopTesting.remove(proxyEntity.id)
+                refreshChainCard(proxyEntity.id)
+            }
         }
     }
 
@@ -343,8 +378,72 @@ class ConfigurationFragment @JvmOverloads constructor(
 
     }
 
+    fun showAddMenu() {
+        val items = arrayOf(
+            getString(R.string.add_profile_methods_scan_qr_code),
+            getString(R.string.action_import),
+            getString(R.string.action_import_file),
+            getString(R.string.add_profile_methods_manual_settings)
+        )
+        MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.add_profile)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> startActivity(Intent(context, ScannerActivity::class.java))
+                    1 -> handleMenuAction(R.id.action_import_clipboard)
+                    2 -> startFilesForResult(importFile, "*/*")
+                    3 -> showManualAddMenu()
+                }
+            }
+            .show()
+    }
+
+    private fun showManualAddMenu() {
+        val items = arrayOf(
+            getString(R.string.action_socks),
+            getString(R.string.action_http),
+            getString(R.string.action_shadowsocks),
+            getString(R.string.action_vmess),
+            "VLESS",
+            getString(R.string.action_trojan),
+            getString(R.string.action_trojan_go),
+            getString(R.string.action_mieru),
+            getString(R.string.action_naive),
+            getString(R.string.action_hysteria),
+            getString(R.string.action_tuic),
+            getString(R.string.action_shadowtls),
+            getString(R.string.action_anytls),
+            getString(R.string.action_ssh),
+            getString(R.string.action_wireguard),
+            getString(R.string.custom_config),
+            getString(R.string.proxy_chain)
+        )
+        val ids = intArrayOf(
+            R.id.action_new_socks, R.id.action_new_http, R.id.action_new_ss, R.id.action_new_vmess,
+            R.id.action_new_vless, R.id.action_new_trojan, R.id.action_new_trojan_go,
+            R.id.action_new_mieru, R.id.action_new_naive, R.id.action_new_hysteria,
+            R.id.action_new_tuic, R.id.action_new_shadowtls, R.id.action_new_anytls,
+            R.id.action_new_ssh, R.id.action_new_wg, R.id.action_new_config, R.id.action_new_chain
+        )
+        MaterialAlertDialogBuilder(requireContext()).setTitle(
+            R.string.add_profile_methods_manual_settings
+        )
+            .setItems(items) { _, which ->
+                handleMenuAction(ids[which])
+            }
+            .show()
+    }
+
     override fun onMenuItemClick(item: MenuItem): Boolean {
-        when (item.itemId) {
+        return handleMenuAction(item.itemId)
+    }
+
+    private fun handleMenuAction(itemId: Int): Boolean {
+        when (itemId) {
+            R.id.action_settings -> {
+                (requireActivity() as MainActivity).displayFragmentWithId(R.id.nav_settings)
+                return true
+            }
+
             R.id.action_scan_qr_code -> {
                 startActivity(Intent(context, ScannerActivity::class.java))
             }
@@ -727,7 +826,8 @@ class ConfigurationFragment @JvmOverloads constructor(
                                         address = this[0].hostAddress
                                     }
                                 }
-                            } catch (ignored: UnknownHostException) {
+                            } catch (e: UnknownHostException) {
+                                Logs.w(e)
                             }
                         }
                         if (!isActive) break
@@ -1074,6 +1174,7 @@ class ConfigurationFragment @JvmOverloads constructor(
 
         lateinit var layoutManager: LinearLayoutManager
         lateinit var configurationListView: RecyclerView
+        var emptyView: View? = null
 
         val select by lazy {
             try {
@@ -1159,6 +1260,7 @@ class ConfigurationFragment @JvmOverloads constructor(
 
             configurationListView = view.findViewById(R.id.configuration_list)
             layoutManager = FixedLinearLayoutManager(configurationListView)
+            layoutManager.initialPrefetchItemCount = 6
             configurationListView.layoutManager = layoutManager
             adapter = ConfigurationAdapter()
             ProfileManager.addListener(adapter!!)
@@ -1167,6 +1269,10 @@ class ConfigurationFragment @JvmOverloads constructor(
             configurationListView.setItemViewCacheSize(20)
 
             if (!select) {
+                emptyView = view.findViewById(R.id.empty_view)
+                view.findViewById<View>(R.id.empty_add_button).setOnClickListener {
+                    (parentFragment as ConfigurationFragment).showAddMenu()
+                }
 
                 undoManager = UndoSnackbarManager(activity as MainActivity, adapter!!)
 
@@ -1218,8 +1324,7 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
 
             super.onDestroy()
-
-            if (!::undoManager.isInitialized) return
+            if (::undoManager.isInitialized) return
             undoManager.flush()
         }
 
@@ -1269,6 +1374,29 @@ class ConfigurationFragment @JvmOverloads constructor(
                 }
             }
 
+            override fun onBindViewHolder(
+                holder: ConfigurationHolder,
+                position: Int,
+                payloads: MutableList<Any>
+            ) {
+                if (payloads.isEmpty()) {
+                    onBindViewHolder(holder, position)
+                } else {
+                    try {
+                        val item = getItemAt(position)
+                        for (payload in payloads) {
+                            when (payload) {
+                                PAYLOAD_LATENCY -> holder.updateStatus(item)
+                                PAYLOAD_TRAFFIC -> holder.updateTraffic(item)
+                                PAYLOAD_SELECTED -> holder.updateSelected(item)
+                                else -> holder.bind(item)
+                            }
+                        }
+                    } catch (ignored: Exception) {
+                    }
+                }
+            }
+
             override fun getItemCount(): Int {
                 return configurationIdList.size
             }
@@ -1280,14 +1408,18 @@ class ConfigurationFragment @JvmOverloads constructor(
                     reloadProfiles()
                     return
                 }
-                configurationIdList.clear()
                 val lower = name.lowercase()
-                configurationIdList.addAll(configurationList.filter {
+                val newIds = configurationList.filter {
                     it.value.displayName().lowercase().contains(lower) ||
                             it.value.displayType().lowercase().contains(lower) ||
                             it.value.displayAddress().lowercase().contains(lower)
-                }.keys)
-                notifyDataSetChanged()
+                }.keys.toList()
+                val oldList = ArrayList(configurationIdList)
+                val diff = DiffUtil.calculateDiff(ProfileDiffCallback(oldList, newIds))
+                configurationIdList.clear()
+                configurationIdList.addAll(newIds)
+                diff.dispatchUpdatesTo(this)
+                updateEmptyView()
             }
 
             fun move(from: Int, to: Int) {
@@ -1363,7 +1495,7 @@ class ConfigurationFragment @JvmOverloads constructor(
                         undoManager.flush()
                     }
                     configurationList[profile.id] = profile
-                    notifyItemChanged(index)
+                    notifyItemChanged(index, PAYLOAD_LATENCY)
                     //
                     val oldProfile = configurationList[profile.id]
                     if (noTraffic && oldProfile != null) {
@@ -1384,12 +1516,8 @@ class ConfigurationFragment @JvmOverloads constructor(
                 try {
                     val index = configurationIdList.indexOf(data.id)
                     if (index != -1) {
-                        val holder = layoutManager.findViewByPosition(index)
-                            ?.let { configurationListView.getChildViewHolder(it) } as ConfigurationHolder?
-                        if (holder != null) {
-                            onMainDispatcher {
-                                holder.bind(holder.entity, data)
-                            }
+                        configurationListView.post {
+                            notifyItemChanged(index, PAYLOAD_TRAFFIC)
                         }
                     }
                 } catch (e: Exception) {
@@ -1450,9 +1578,12 @@ class ConfigurationFragment @JvmOverloads constructor(
                 }
 
                 configurationListView.post {
+                    val oldList = ArrayList(configurationIdList)
+                    val diff = DiffUtil.calculateDiff(ProfileDiffCallback(oldList, newProfileIds))
                     configurationIdList.clear()
                     configurationIdList.addAll(newProfileIds)
-                    notifyDataSetChanged()
+                    diff.dispatchUpdatesTo(this)
+                    updateEmptyView()
 
                     if (selectedProfileIndex != -1) {
                         configurationListView.scrollTo(selectedProfileIndex, true)
@@ -1461,6 +1592,13 @@ class ConfigurationFragment @JvmOverloads constructor(
                     }
 
                 }
+            }
+
+            fun updateEmptyView() {
+                val emptyView = emptyView ?: return
+                val isEmpty = configurationIdList.isEmpty()
+                emptyView.visibility = if (isEmpty) View.VISIBLE else View.GONE
+                configurationListView.visibility = if (isEmpty) View.GONE else View.VISIBLE
             }
 
         }
@@ -1479,6 +1617,8 @@ class ConfigurationFragment @JvmOverloads constructor(
             val profileStatus: TextView = view.findViewById(R.id.profile_status)
 
             val trafficText: TextView = view.findViewById(R.id.traffic_text)
+            val chainDetailsContainer: LinearLayout = view.findViewById(R.id.chain_details_container)
+            val chainDetails: TextView = view.findViewById(R.id.chain_details)
             val selectedView: LinearLayout = view.findViewById(R.id.selected_view)
             val editButton: ImageView = view.findViewById(R.id.edit)
             val shareLayout: LinearLayout = view.findViewById(R.id.share)
@@ -1486,55 +1626,23 @@ class ConfigurationFragment @JvmOverloads constructor(
             val shareButton: ImageView = view.findViewById(R.id.shareIcon)
             val removeButton: ImageView = view.findViewById(R.id.remove)
 
-            fun bind(proxyEntity: ProxyEntity, trafficData: TrafficData? = null) {
+            fun updateSelected(proxyEntity: ProxyEntity) {
+                val card = view as? MaterialCardView
+                val selected = (selectedItem?.id ?: DataStore.selectedProxy) == proxyEntity.id
+                val started =
+                    selected && DataStore.serviceState.started && DataStore.currentProfile == proxyEntity.id
+                editButton.isEnabled = !started
+                removeButton.isEnabled = !started
+                selectedView.visibility = if (selected) View.VISIBLE else View.INVISIBLE
+                card?.strokeColor = if (selected) requireContext().getColorAttr(R.attr.colorPrimary) else 0x1F888888.toInt()
+                card?.strokeWidth = if (selected) dp2px(2) else dp2px(1)
+            }
+
+            fun updateTraffic(proxyEntity: ProxyEntity, trafficData: TrafficData? = null) {
                 val pf = parentFragment as? ConfigurationFragment ?: return
-
-                entity = proxyEntity
-
-                if (select) {
-                    view.setOnClickListener {
-                        (requireActivity() as SelectCallback).returnProfile(proxyEntity.id)
-                    }
-                } else {
-                    view.setOnClickListener {
-                        runOnDefaultDispatcher {
-                            var update: Boolean
-                            var lastSelected: Long
-                            profileAccess.withLock {
-                                update = DataStore.selectedProxy != proxyEntity.id
-                                lastSelected = DataStore.selectedProxy
-                                DataStore.selectedProxy = proxyEntity.id
-                                onMainDispatcher {
-                                    selectedView.visibility = View.VISIBLE
-                                }
-                            }
-
-                            if (update) {
-                                ProfileManager.postUpdate(lastSelected)
-                                if (DataStore.serviceState.canStop && reloadAccess.tryLock()) {
-                                    SagerNet.reloadService()
-                                    reloadAccess.unlock()
-                                }
-                            } else if (SagerNet.isTv) {
-                                if (DataStore.serviceState.started) {
-                                    SagerNet.stopService()
-                                } else {
-                                    SagerNet.startService()
-                                }
-                            }
-                        }
-
-                    }
-                }
-
-                profileName.text = proxyEntity.displayName()
-                profileType.text = proxyEntity.displayType()
-                profileType.setTextColor(requireContext().getProtocolColor(proxyEntity.type))
-
                 var rx = proxyEntity.rx
                 var tx = proxyEntity.tx
                 if (trafficData != null) {
-                    // use new data
                     tx = trafficData.tx
                     rx = trafficData.rx
                 }
@@ -1570,11 +1678,34 @@ class ConfigurationFragment @JvmOverloads constructor(
                     } else {
                         profileStatus.text = ""
                     }
+                    profileStatus.background = null
+                }
+            }
+
+            fun updateStatus(proxyEntity: ProxyEntity) {
+                if (proxyEntity.status <= 0) {
+                    updateTraffic(proxyEntity)
+                    return
                 } else if (proxyEntity.status == 1) {
                     profileStatus.text = getString(R.string.available, proxyEntity.ping)
-                    profileStatus.setTextColor(requireContext().getColour(R.color.material_green_500))
+                    val badgeColor = when {
+                        proxyEntity.ping <= 100 -> R.color.material_green_500
+                        proxyEntity.ping <= 300 -> R.color.material_orange_500
+                        else -> R.color.material_red_500
+                    }
+                    profileStatus.setTextColor(requireContext().getColour(R.color.material_light_white))
+                    profileStatus.background = DrawableCompat.wrap(
+                        requireContext().getDrawable(R.drawable.bg_latency_badge)!!.mutate()
+                    ).apply {
+                        DrawableCompat.setTint(this, requireContext().getColour(badgeColor))
+                    }
                 } else {
-                    profileStatus.setTextColor(requireContext().getColour(R.color.material_red_500))
+                    profileStatus.setTextColor(requireContext().getColour(R.color.material_light_white))
+                    profileStatus.background = DrawableCompat.wrap(
+                        requireContext().getDrawable(R.drawable.bg_latency_badge)!!.mutate()
+                    ).apply {
+                        DrawableCompat.setTint(this, requireContext().getColour(R.color.material_red_500))
+                    }
                     if (proxyEntity.status == 2) {
                         profileStatus.text = proxyEntity.error
                     }
@@ -1589,6 +1720,73 @@ class ConfigurationFragment @JvmOverloads constructor(
                     }
                 } else {
                     profileStatus.setOnClickListener(null)
+                }
+            }
+
+            fun bind(proxyEntity: ProxyEntity, trafficData: TrafficData? = null) {
+                val pf = parentFragment as? ConfigurationFragment ?: return
+
+                entity = proxyEntity
+
+                if (select) {
+                    view.setOnClickListener {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        (requireActivity() as SelectCallback).returnProfile(proxyEntity.id)
+                    }
+                } else {
+                    view.setOnClickListener {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        runOnDefaultDispatcher {
+                            if (proxyEntity.type == ProxyEntity.TYPE_CHAIN) {
+                                pf.expandedChainIds.add(proxyEntity.id)
+                                pf.testChainHops(proxyEntity)
+                            }
+
+                            var update: Boolean
+                            var lastSelected: Long
+                            profileAccess.withLock {
+                                update = DataStore.selectedProxy != proxyEntity.id
+                                lastSelected = DataStore.selectedProxy
+                                DataStore.selectedProxy = proxyEntity.id
+                                onMainDispatcher {
+                                    updateSelected(proxyEntity)
+                                }
+                            }
+
+                            if (update) {
+                                ProfileManager.postUpdate(lastSelected)
+                                if (DataStore.serviceState.canStop && reloadAccess.tryLock()) {
+                                    SagerNet.reloadService()
+                                    reloadAccess.unlock()
+                                }
+                            } else if (SagerNet.isTv) {
+                                if (DataStore.serviceState.started) {
+                                    SagerNet.stopService()
+                                } else {
+                                    SagerNet.startService()
+                                }
+                            }
+                        }
+
+                    }
+                }
+
+                profileName.text = proxyEntity.displayName()
+                profileType.text = proxyEntity.displayType()
+                profileType.setTextColor(requireContext().getProtocolColor(proxyEntity.type))
+
+                updateTraffic(proxyEntity, trafficData)
+                updateStatus(proxyEntity)
+
+                val showChainDetails = proxyEntity.type == ProxyEntity.TYPE_CHAIN &&
+                        (pf.expandedChainIds.contains(proxyEntity.id) ||
+                                (selectedItem?.id ?: DataStore.selectedProxy) == proxyEntity.id)
+                chainDetailsContainer.isVisible = showChainDetails
+                if (showChainDetails) {
+                    chainDetails.text = pf.chainHopDetails[proxyEntity.id]
+                        ?: getString(R.string.connection_test)
+                } else {
+                    chainDetails.text = ""
                 }
 
                 editButton.setOnClickListener {
@@ -1617,13 +1815,8 @@ class ConfigurationFragment @JvmOverloads constructor(
                 }
 
                 runOnDefaultDispatcher {
-                    val selected = (selectedItem?.id ?: DataStore.selectedProxy) == proxyEntity.id
-                    val started =
-                        selected && DataStore.serviceState.started && DataStore.currentProfile == proxyEntity.id
                     onMainDispatcher {
-                        editButton.isEnabled = !started
-                        removeButton.isEnabled = !started
-                        selectedView.visibility = if (selected) View.VISIBLE else View.INVISIBLE
+                        updateSelected(proxyEntity)
                     }
 
                     fun showShare(anchor: View) {
@@ -1737,6 +1930,22 @@ class ConfigurationFragment @JvmOverloads constructor(
     private fun cancelSearch(searchView: SearchView) {
         searchView.onActionViewCollapsed()
         searchView.clearFocus()
+    }
+
+    private class ProfileDiffCallback(
+        private val old: List<Long>,
+        private val new: List<Long>
+    ) : DiffUtil.Callback() {
+        override fun getOldListSize() = old.size
+        override fun getNewListSize() = new.size
+        override fun areItemsTheSame(op: Int, np: Int) = old[op] == new[np]
+        override fun areContentsTheSame(op: Int, np: Int) = old[op] == new[np]
+    }
+
+    companion object {
+        const val PAYLOAD_LATENCY = 1
+        const val PAYLOAD_TRAFFIC = 2
+        const val PAYLOAD_SELECTED = 3
     }
 
 }

@@ -54,6 +54,7 @@ object Key {
     const val LOG_BUF_SIZE = "logBufSize"
     const val MTU = "mtu"
     const val ALWAYS_SHOW_ADDRESS = "alwaysShowAddress"
+    const val RULE_ASSETS_CHECK_SKIPPED = "ruleAssetsCheckSkipped"
 
     // Protocol Settings
     const val GLOBAL_ALLOW_INSECURE = "globalAllowInsecure"
