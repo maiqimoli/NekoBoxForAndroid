@@ -14,53 +14,46 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
 import com.google.zxing.Result
-import com.king.zxing.CameraScan
-import com.king.zxing.DefaultCameraScan
+import com.king.camera.scan.AnalyzeResult
+import com.king.camera.scan.CameraScan
+import com.king.camera.scan.analyze.Analyzer
+import com.king.zxing.BarcodeCameraScanActivity
 import com.king.zxing.analyze.QRCodeAnalyzer
 import com.king.zxing.util.CodeUtils
-import com.king.zxing.util.LogUtils
-import com.king.zxing.util.PermissionUtils
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.ProfileManager
-import io.nekohasekai.sagernet.databinding.LayoutScannerBinding
 import io.nekohasekai.sagernet.group.RawUpdater
 import io.nekohasekai.sagernet.ktx.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-
-class ScannerActivity : ThemedActivity(),
-    CameraScan.OnScanResultCallback {
-
-    lateinit var binding: LayoutScannerBinding
-    lateinit var cameraScan: CameraScan
+/**
+ * 二维码扫描页（zxing-lite 3.x 实现）。
+ *
+ * 基于 [BarcodeCameraScanActivity]（camera-scan 库），相机预览与手电筒由基类管理。
+ * 扫码结果经 [RawUpdater.parseRaw] 解析后导入当前分组。
+ */
+class ScannerActivity : BarcodeCameraScanActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         if (Build.VERSION.SDK_INT >= 25) getSystemService<ShortcutManager>()!!.reportShortcutUsed("scan")
-        binding = LayoutScannerBinding.inflate(layoutInflater)
-        setContentView(binding.root)
         setSupportActionBar(findViewById(R.id.toolbar))
         supportActionBar?.apply {
             setDisplayHomeAsUpEnabled(true)
             setHomeAsUpIndicator(R.drawable.ic_navigation_close)
         }
-
-        // 二维码库
-        initCameraScan()
-        startCamera()
-        binding.ivFlashlight.setOnClickListener { toggleTorchState() }
     }
+
+    override fun getLayoutId(): Int = R.layout.layout_scanner
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.scanner_menu, menu)
         return true
     }
 
-    val importCodeFile = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) {
-        runOnDefaultDispatcher {
+    val importCodeFile = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) {        runOnDefaultDispatcher {
             try {
                 it.forEachTry { uri ->
                     val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -77,9 +70,9 @@ class ScannerActivity : ThemedActivity(),
                             contentResolver, uri
                         )
                     }
-                    val result = CodeUtils.parseCodeResult(bitmap)
+                    val text = CodeUtils.parseQRCode(bitmap)
                     onMainDispatcher {
-                        onScanResultCallback(result, true)
+                        this@ScannerActivity.onScanResultCallback(text, true)
                     }
                 }
                 finish()
@@ -94,7 +87,7 @@ class ScannerActivity : ThemedActivity(),
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return if (item.itemId == R.id.action_import_file) {
-            startFilesForResult(importCodeFile, "image/*")
+            importCodeFile.launch("image/*")
             true
         } else {
             super.onOptionsItemSelected(item)
@@ -105,21 +98,24 @@ class ScannerActivity : ThemedActivity(),
     var importedN = AtomicInteger(0)
 
     /**
-     * 接收扫码结果回调
-     * @param result 扫码结果
-     * @return 返回true表示拦截，将不自动执行后续逻辑，为false表示不拦截，默认不拦截
+     * 相机扫码结果回调（zxing-lite 3.x，[AnalyzeResult] 包装 [Result]）。
      */
-    override fun onScanResultCallback(result: Result?): Boolean {
-        return onScanResultCallback(result, false)
+    override fun onScanResultCallback(result: AnalyzeResult<Result>) {
+        if (finished.getAndSet(true)) return
+        finish()
+        onScanResultCallback(result.result.text, false)
     }
 
-    fun onScanResultCallback(result: Result?, multi: Boolean): Boolean {
-        if (!multi && finished.getAndSet(true)) return true
+    /**
+     * 统一处理扫码/图片导入结果文本。
+     */
+    fun onScanResultCallback(text: String?, multi: Boolean) {
+        if (!multi && finished.getAndSet(true)) return
         if (!multi) finish()
         runOnDefaultDispatcher {
             try {
-                val text = result?.text ?: throw Exception("QR code not found")
-                val results = RawUpdater.parseRaw(text)
+                val resultText = text ?: throw Exception("QR code not found")
+                val results = RawUpdater.parseRaw(resultText)
                 if (!results.isNullOrEmpty()) {
                     val currentGroupId = DataStore.selectedGroupForImport()
                     if (DataStore.selectedGroup != currentGroupId) {
@@ -143,84 +139,28 @@ class ScannerActivity : ThemedActivity(),
             } catch (e: Throwable) {
                 Logs.w(e)
                 onMainDispatcher {
-                    var text = getString(R.string.action_import_err)
-                    text += "\n" + e.readableMessage
-                    Toast.makeText(app, text, Toast.LENGTH_SHORT).show()
+                    var message = getString(R.string.action_import_err)
+                    message += "\n" + e.readableMessage
+                    Toast.makeText(app, message, Toast.LENGTH_SHORT).show()
                 }
             }
         }
-        return true
     }
 
     /**
-     * 初始化CameraScan
+     * 初始化 CameraScan 配置。
      */
-    fun initCameraScan() {
-        cameraScan = DefaultCameraScan(this, binding.previewView)
-        cameraScan.setAnalyzer(QRCodeAnalyzer())
-        cameraScan.setOnScanResultCallback(this)
-        cameraScan.setNeedAutoZoom(true)
+    override fun initCameraScan(cameraScan: CameraScan<Result>) {
+        super.initCameraScan(cameraScan)
+        cameraScan.setAnalyzeImage(true)
     }
 
     /**
-     * 启动相机预览
+     * 创建二维码分析器。
      */
-    fun startCamera() {
-        if (PermissionUtils.checkPermission(this, Manifest.permission.CAMERA)) {
-            cameraScan.startCamera()
-        } else {
-            LogUtils.d("checkPermissionResult != PERMISSION_GRANTED")
-            PermissionUtils.requestPermission(
-                this, Manifest.permission.CAMERA, CAMERA_PERMISSION_REQUEST_CODE
-            )
-        }
-    }
-
-    /**
-     * 释放相机
-     */
-    private fun releaseCamera() {
-        cameraScan.release()
-    }
-
-    /**
-     * 切换闪光灯状态（开启/关闭）
-     */
-    protected fun toggleTorchState() {
-        val isTorch = cameraScan.isTorchEnabled
-        cameraScan.enableTorch(!isTorch)
-        binding.ivFlashlight.isSelected = !isTorch
-    }
-
-    val CAMERA_PERMISSION_REQUEST_CODE = 0X86
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<String>, grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
-            requestCameraPermissionResult(permissions, grantResults)
-        }
-    }
-
-    /**
-     * 请求Camera权限回调结果
-     * @param permissions
-     * @param grantResults
-     */
-    fun requestCameraPermissionResult(permissions: Array<String>, grantResults: IntArray) {
-        if (PermissionUtils.requestPermissionsResult(
-                Manifest.permission.CAMERA, permissions, grantResults
-            )
-        ) {
-            startCamera()
-        } else {
-            finish()
-        }
-    }
+    override fun createAnalyzer(): Analyzer<Result>? = QRCodeAnalyzer()
 
     override fun onDestroy() {
-        releaseCamera()
         super.onDestroy()
         if (importedN.get() > 0) {
             var text = getString(R.string.action_import_msg)
