@@ -10,6 +10,8 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.set
 import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import com.google.zxing.BarcodeFormat
@@ -57,6 +59,7 @@ class QRCodeDialog() : DialogFragment() {
             pixelMin = if (height > width) width else height
             pixelMin = (pixelMin * 0.8).roundToInt()
         } catch (e: Exception) {
+            Logs.w(e)
         }
 
         val size = if (pixelMin > 0) pixelMin else resources.getDimensionPixelSize(R.dimen.qrcode_size)
@@ -78,9 +81,9 @@ class QRCodeDialog() : DialogFragment() {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                setImageBitmap(Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565).apply {
+                setImageBitmap(createBitmap(size, size, Bitmap.Config.RGB_565).apply {
                     for (x in 0 until size) for (y in 0 until size) {
-                        setPixel(x, y, if (qrBits.get(x, y)) Color.BLACK else Color.WHITE)
+                        set(x, y, if (qrBits.get(x, y)) Color.BLACK else Color.WHITE)
                     }
                 })
             })

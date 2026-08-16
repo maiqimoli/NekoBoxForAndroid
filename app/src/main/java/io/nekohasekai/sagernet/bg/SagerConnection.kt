@@ -13,6 +13,7 @@ import io.nekohasekai.sagernet.aidl.ISagerNetServiceCallback
 import io.nekohasekai.sagernet.aidl.SpeedDisplayData
 import io.nekohasekai.sagernet.aidl.TrafficData
 import io.nekohasekai.sagernet.database.DataStore
+import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.runOnMainDispatcher
 
 class SagerConnection(
@@ -149,7 +150,8 @@ class SagerConnection(
         val service = service
         if (service != null && callbackRegistered) try {
             service.unregisterCallback(serviceCallback)
-        } catch (_: RemoteException) {
+        } catch (e: RemoteException) {
+            Logs.w(e)
         }
         callbackRegistered = false
     }
@@ -167,12 +169,14 @@ class SagerConnection(
         unregisterCallback()
         if (connectionActive) try {
             context.unbindService(this)
-        } catch (_: IllegalArgumentException) {
+        } catch (e: IllegalArgumentException) {
+            Logs.w(e)
         }   // ignore
         connectionActive = false
         if (listenForDeath) try {
             binder?.unlinkToDeath(this, 0)
-        } catch (_: NoSuchElementException) {
+        } catch (e: NoSuchElementException) {
+            Logs.w(e)
         }
         binder = null
         service = null

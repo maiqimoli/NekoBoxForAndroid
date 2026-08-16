@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.AttributeSet
 import androidx.core.content.res.TypedArrayUtils
+import androidx.core.net.toUri
 import androidx.core.widget.addTextChangedListener
 import androidx.preference.EditTextPreference
 import com.google.android.material.textfield.TextInputLayout
@@ -37,7 +38,7 @@ constructor(
                 }
 
                 try {
-                    if (Uri.parse(link.toString()).scheme == "content") {
+                    if (link.toString().toUri().scheme == "content") {
                         linkLayout.isErrorEnabled = false
                         return
                     }

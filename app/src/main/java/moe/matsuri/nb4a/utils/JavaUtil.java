@@ -1,13 +1,12 @@
 package moe.matsuri.nb4a.utils;
 
 import android.annotation.SuppressLint;
-import android.annotation.TargetApi;
 import android.app.Application;
 import android.content.Context;
 import android.os.Build;
 import android.text.TextUtils;
 import android.webkit.WebView;
-
+import androidx.annotation.RequiresApi;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.ToNumberPolicy;
@@ -110,7 +109,7 @@ public class JavaUtil {
         }
     }
 
-    @TargetApi(Build.VERSION_CODES.P)
+    @RequiresApi(Build.VERSION_CODES.P)
     private static void tryLockOrRecreateFile(File file) {
         try {
             FileLock tryLock = new RandomAccessFile(file, "rw").getChannel().tryLock();

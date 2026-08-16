@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.net.toUri
 import io.nekohasekai.sagernet.R
 
 fun Context.launchCustomTab(link: String) {
@@ -23,7 +24,7 @@ fun Context.launchCustomTab(link: String) {
         )
     }.build().apply {
         if (intent.resolveActivity(packageManager) != null) {
-            launchUrl(this@launchCustomTab, Uri.parse(link))
+            launchUrl(this@launchCustomTab, link.toUri())
         }
     }
 }

@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
 import android.os.Build
 import android.text.format.Formatter
@@ -43,8 +44,7 @@ class ServiceNotification(
 ) : BroadcastReceiver() {
     companion object {
         const val notificationId = 1
-        val flags =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        val flags = PendingIntent.FLAG_IMMUTABLE
 
         fun genTitle(ent: ProxyEntity): String {
             val gn = if (DataStore.showGroupInNotification)
@@ -206,7 +206,12 @@ class ServiceNotification(
         }
 
     private suspend fun update() = useBuilder {
-        NotificationManagerCompat.from(service as Service).notify(notificationId, it.build())
+        val s = service as Service
+        if (Build.VERSION.SDK_INT < 33 ||
+            s.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            NotificationManagerCompat.from(s).notify(notificationId, it.build())
+        }
     }
 
     fun destroy() {

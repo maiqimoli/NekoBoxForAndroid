@@ -16,6 +16,7 @@ import io.nekohasekai.sagernet.bg.proto.ProxyInstance
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.ktx.*
+import io.nekohasekai.sagernet.utils.AutoRegionManager
 import io.nekohasekai.sagernet.plugin.PluginManager
 import io.nekohasekai.sagernet.utils.DefaultNetworkListener
 import kotlinx.coroutines.*
@@ -52,14 +53,12 @@ class BaseService {
                 Action.RELOAD -> service.reload()
                 // Action.SWITCH_WAKE_LOCK -> runOnDefaultDispatcher { service.switchWakeLock() }
                 PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        if (SagerNet.power.isDeviceIdleMode) {
-                            proxy?.box?.sleep()
-                        } else {
-                            proxy?.box?.wake()
-                            if (DataStore.wakeResetConnections) {
-                                Libcore.resetAllConnections(true)
-                            }
+                    if (SagerNet.power.isDeviceIdleMode) {
+                        proxy?.box?.sleep()
+                    } else {
+                        proxy?.box?.wake()
+                        if (DataStore.wakeResetConnections) {
+                            Libcore.resetAllConnections(true)
                         }
                     }
                 }
@@ -124,8 +123,10 @@ class BaseService {
                     repeat(count) {
                         try {
                             work(callbacks.getBroadcastItem(it))
-                        } catch (_: RemoteException) {
-                        } catch (_: Exception) {
+                        } catch (e: RemoteException) {
+                            Logs.w(e)
+                        } catch (e: Exception) {
+                            Logs.w(e)
                         }
                     }
                 } finally {
@@ -331,9 +332,7 @@ class BaseService {
                     addAction(Intent.ACTION_SHUTDOWN)
                     addAction(Action.CLOSE)
                     // addAction(Action.SWITCH_WAKE_LOCK)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
-                    }
+                    addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
                     addAction(Action.RESET_UPSTREAM_CONNECTIONS)
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -364,6 +363,7 @@ class BaseService {
                     preInit()
                     proxy.init()
                     DataStore.currentProfile = profile.id
+                    AutoRegionManager.apply(this@Interface, profile)
 
                     proxy.processes = GuardedProcessPool {
                         Logs.w(it)

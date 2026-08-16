@@ -692,7 +692,8 @@ object RawUpdater : GroupUpdater() {
         try {
             val json = JSONTokener(text).nextValue()
             return parseJSON(json)
-        } catch (ignored: Exception) {
+        } catch (e: Exception) {
+            Logs.w(e)
         }
 
         try {
@@ -706,7 +707,8 @@ object RawUpdater : GroupUpdater() {
             return parseProxies(text).takeIf { it.isNotEmpty() } ?: error("Not found")
         } catch (e: SubscriptionFoundException) {
             throw e
-        } catch (ignored: Exception) {
+        } catch (e: Exception) {
+            Logs.w(e)
         }
 
         return null

@@ -9,6 +9,7 @@ import io.nekohasekai.sagernet.fmt.hysteria.parseHysteria2
 import io.nekohasekai.sagernet.fmt.naive.parseNaive
 import io.nekohasekai.sagernet.fmt.parseUniversal
 import io.nekohasekai.sagernet.fmt.shadowsocks.parseShadowsocks
+import io.nekohasekai.sagernet.fmt.socks.parsePlainSOCKS
 import io.nekohasekai.sagernet.fmt.socks.parseSOCKS
 import io.nekohasekai.sagernet.fmt.trojan.parseTrojan
 import io.nekohasekai.sagernet.fmt.tuic.parseTuic
@@ -216,6 +217,11 @@ suspend fun parseProxies(text: String): List<AbstractBean> {
                 entities.add(parseAnytls(this))
             }.onFailure {
                 Logs.w(it)
+            }
+        } else {
+            parsePlainSOCKS(this)?.let {
+                Logs.d("Try parse plain socks link: $this")
+                entities.add(it)
             }
         }
     }

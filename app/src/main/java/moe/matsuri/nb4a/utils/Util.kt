@@ -3,6 +3,7 @@ package moe.matsuri.nb4a.utils
 import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Base64
+import android.util.Log
 import libcore.StringBox
 import java.io.ByteArrayOutputStream
 import java.net.URLDecoder
@@ -75,7 +76,8 @@ object Util {
         for (flag in flags) {
             try {
                 ret = Base64.decode(str, flag)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w("Util", "base64 decode failed with flag $flag", e)
             }
             if (ret != null) return ret
         }
@@ -170,7 +172,8 @@ object Util {
     fun tryToSetField(o: Any, name: String, value: Any) {
         try {
             o.javaClass.getField(name).set(o, value)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w("Util", "failed to set field $name", e)
         }
     }
 
@@ -180,7 +183,8 @@ object Util {
             val statusBarManager = context.getSystemService("statusbar")
             val collapse = statusBarManager.javaClass.getMethod("collapsePanels")
             collapse.invoke(statusBarManager)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w("Util", "failed to collapse status bar", e)
         }
     }
 

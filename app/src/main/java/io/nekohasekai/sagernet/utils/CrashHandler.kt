@@ -27,12 +27,14 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
         try {
             Log.e(thread.toString(), throwable.stackTraceToString())
         } catch (e: Exception) {
+            Log.w("CrashHandler", "failed to write crash log", e)
         }
 
         try {
             Logs.e(thread.toString())
             Logs.e(throwable.stackTraceToString())
         } catch (e: Exception) {
+            Log.w("CrashHandler", "failed to write crash log via Logs", e)
         }
 
         ProcessPhoenix.triggerRebirth(app, Intent(app, BlankActivity::class.java).apply {

@@ -12,7 +12,8 @@ class FixedLinearLayoutManager(val recyclerView: RecyclerView) :
     override fun onLayoutChildren(recycler: RecyclerView.Recycler?, state: RecyclerView.State?) {
         try {
             super.onLayoutChildren(recycler, state)
-        } catch (ignored: IndexOutOfBoundsException) {
+        } catch (e: IndexOutOfBoundsException) {
+            Logs.w(e)
         }
     }
 

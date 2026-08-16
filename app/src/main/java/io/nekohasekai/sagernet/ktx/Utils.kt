@@ -189,7 +189,8 @@ fun RecyclerView.scrollTo(index: Int, force: Boolean = false) {
                     return SNAP_TO_START
                 }
             })
-        } catch (ignored: IllegalArgumentException) {
+        } catch (e: IllegalArgumentException) {
+            Logs.w(e)
         }
     }, 300L)
 }
@@ -223,8 +224,10 @@ fun ThemedActivity.startFilesForResult(
 ) {
     try {
         return launcher.launch(input)
-    } catch (_: ActivityNotFoundException) {
-    } catch (_: SecurityException) {
+    } catch (e: ActivityNotFoundException) {
+        Logs.w(e)
+    } catch (e: SecurityException) {
+        Logs.w(e)
     }
     snackbar(getString(R.string.file_manager_missing)).show()
 }
@@ -234,8 +237,10 @@ fun Fragment.startFilesForResult(
 ) {
     try {
         return launcher.launch(input)
-    } catch (_: ActivityNotFoundException) {
-    } catch (_: SecurityException) {
+    } catch (e: ActivityNotFoundException) {
+        Logs.w(e)
+    } catch (e: SecurityException) {
+        Logs.w(e)
     }
     (requireActivity() as ThemedActivity).snackbar(getString(R.string.file_manager_missing)).show()
 }
@@ -297,14 +302,16 @@ const val isPreview = BuildConfig.FLAVOR == "preview"
 fun <T> Continuation<T>.tryResume(value: T) {
     try {
         resumeWith(Result.success(value))
-    } catch (ignored: IllegalStateException) {
+    } catch (e: IllegalStateException) {
+        Logs.w(e)
     }
 }
 
 fun <T> Continuation<T>.tryResumeWithException(exception: Throwable) {
     try {
         resumeWith(Result.failure(exception))
-    } catch (ignored: IllegalStateException) {
+    } catch (e: IllegalStateException) {
+        Logs.w(e)
     }
 }
 

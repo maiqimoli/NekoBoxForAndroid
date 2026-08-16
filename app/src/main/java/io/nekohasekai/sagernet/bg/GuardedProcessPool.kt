@@ -33,7 +33,8 @@ class GuardedProcessPool(private val onFatal: suspend (IOException) -> Unit) : C
 
         private fun streamLogger(input: InputStream, logger: (String) -> Unit) = try {
             input.bufferedReader().forEachLine(logger)
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            Logs.w(e)
         }    // ignore
 
         fun start() {

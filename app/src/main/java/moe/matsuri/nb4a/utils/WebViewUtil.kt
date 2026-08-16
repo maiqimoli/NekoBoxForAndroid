@@ -13,7 +13,7 @@ object WebViewUtil {
     fun onReceivedError(
         view: WebView?, request: WebResourceRequest?, error: WebResourceError?
     ) {
-        if (Build.VERSION.SDK_INT >= 23 && error != null) {
+        if (error != null) {
             Logs.e("WebView error description: ${error.description}")
         }
         Logs.e("WebView error: ${error.toString()}")

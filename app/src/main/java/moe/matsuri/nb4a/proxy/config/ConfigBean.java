@@ -2,6 +2,8 @@ package moe.matsuri.nb4a.proxy.config;
 
 import androidx.annotation.NonNull;
 
+import android.util.Log;
+
 import com.esotericsoftware.kryo.io.ByteBufferInput;
 import com.esotericsoftware.kryo.io.ByteBufferOutput;
 import com.google.gson.JsonObject;
@@ -56,7 +58,8 @@ public class ConfigBean extends InternalBean {
                 if (json != null && json.has("type")) {
                     return json.get("type").getAsString() + " (sing-box)";
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                Log.w("ConfigBean", "failed to parse config type", e);
             }
         }
         return type != null && type == 0 ? "sing-box config" : "sing-box outbound";
