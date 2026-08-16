@@ -97,11 +97,6 @@ import moe.matsuri.nb4a.Protocols
 
     private fun ConfigurationFragment.handleMenuAction(itemId: Int): Boolean {
         when (itemId) {
-            R.id.action_settings -> {
-                (requireActivity() as MainActivity).displayFragmentWithId(R.id.nav_settings)
-                return true
-            }
-
             R.id.action_scan_qr_code -> {
                 startActivity(Intent(context, ScannerActivity::class.java))
             }
