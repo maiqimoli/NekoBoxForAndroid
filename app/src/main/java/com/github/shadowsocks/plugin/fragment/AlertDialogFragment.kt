@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // getParcelable 泛型为 API 33 前兼容路径
+
 package com.github.shadowsocks.plugin.fragment
 
 import android.app.Activity
@@ -26,7 +28,7 @@ abstract class AlertDialogFragment<Arg : Parcelable, Ret : Parcelable?> :
         fun <Ret : Parcelable> setResultListener(fragment: Fragment, requestKey: String,
                                                  listener: (Int, Ret?) -> Unit) {
             fragment.setFragmentResultListener(requestKey) { _, bundle ->
-                listener(bundle.getInt(KEY_WHICH, Activity.RESULT_CANCELED), bundle.getParcelable(KEY_RET))
+                listener(bundle.getInt(KEY_WHICH, Activity.RESULT_CANCELED), bundle.getParcelable<Ret>(KEY_RET))
             }
         }
         inline fun <reified T : AlertDialogFragment<*, Ret>, Ret : Parcelable?> setResultListener(

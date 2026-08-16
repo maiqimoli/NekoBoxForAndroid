@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.database.preference.KeyValuePair
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
@@ -13,10 +14,11 @@ abstract class TempDatabase : RoomDatabase() {
 
     companion object {
         @Suppress("EXPERIMENTAL_API_USAGE")
+        @OptIn(DelicateCoroutinesApi::class)
         private val instance by lazy {
             Room.inMemoryDatabaseBuilder(SagerNet.application, TempDatabase::class.java)
                 .allowMainThreadQueries()
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .setQueryExecutor { GlobalScope.launch { it.run() } }
                 .build()
         }

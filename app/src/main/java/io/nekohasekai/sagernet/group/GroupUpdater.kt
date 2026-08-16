@@ -1,5 +1,10 @@
+
+
+@file:OptIn(DelicateCoroutinesApi::class)
+
 package io.nekohasekai.sagernet.group
 
+import kotlinx.coroutines.DelicateCoroutinesApi
 import io.nekohasekai.sagernet.*
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.GroupManager

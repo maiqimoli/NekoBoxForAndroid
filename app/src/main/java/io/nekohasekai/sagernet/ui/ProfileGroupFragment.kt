@@ -87,6 +87,7 @@ import androidx.core.view.size
         override fun onViewStateRestored(savedInstanceState: Bundle?) {
             super.onViewStateRestored(savedInstanceState)
 
+            @Suppress("DEPRECATION") // API 33 前 getParcelable 泛型兼容路径
             savedInstanceState?.getParcelable<ProxyGroup>("proxyGroup")?.also {
                 proxyGroup = it
                 onViewCreated(requireView(), null)

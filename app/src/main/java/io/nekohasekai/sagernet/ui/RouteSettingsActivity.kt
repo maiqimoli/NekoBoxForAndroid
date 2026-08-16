@@ -294,6 +294,7 @@ class RouteSettingsActivity(
 
     override fun onOptionsItemSelected(item: MenuItem) = child.onOptionsItemSelected(item)
 
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
         if (needSave()) {
             UnsavedChangesDialogFragment().apply { key() }.show(supportFragmentManager, null)
@@ -346,6 +347,7 @@ class RouteSettingsActivity(
             }
         }
 
+        @Suppress("OVERRIDE_DEPRECATION")
         override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
             R.id.action_delete -> {
                 if (DataStore.editingId == 0L) {

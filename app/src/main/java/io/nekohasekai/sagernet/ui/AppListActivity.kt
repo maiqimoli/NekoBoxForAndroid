@@ -177,6 +177,7 @@ class AppListActivity : ThemedActivity() {
     private fun isProxiedApp(app: ProxiedApp) = proxiedUids[app.uid]
 
     @UiThread
+    @Suppress("DEPRECATION") // launchWhenCreated 为内联，块内含函数声明，无法用 repeatOnLifecycle 迁移
     private fun loadApps() {
         loader?.cancel()
         loader = lifecycleScope.launchWhenCreated {

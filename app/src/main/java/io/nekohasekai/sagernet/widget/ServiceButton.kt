@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package io.nekohasekai.sagernet.widget
 
 import android.content.Context

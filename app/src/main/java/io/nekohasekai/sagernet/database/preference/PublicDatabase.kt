@@ -1,5 +1,10 @@
+
+
+@file:OptIn(DelicateCoroutinesApi::class)
+
 package io.nekohasekai.sagernet.database.preference
 
+import kotlinx.coroutines.DelicateCoroutinesApi
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -19,7 +24,7 @@ abstract class PublicDatabase : RoomDatabase() {
                 .setJournalMode(JournalMode.TRUNCATE)
                 .allowMainThreadQueries()
                 .enableMultiInstanceInvalidation()
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .setQueryExecutor { GlobalScope.launch { it.run() } }
                 .build()
         }

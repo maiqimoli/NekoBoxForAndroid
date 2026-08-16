@@ -219,6 +219,7 @@ class ServiceNotification(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             (service as Service).stopForeground(Service.STOP_FOREGROUND_REMOVE)
         } else {
+            @Suppress("DEPRECATION") // API < 24 只能使用旧重载
             (service as Service).stopForeground(true)
         }
         service.unregisterReceiver(this)

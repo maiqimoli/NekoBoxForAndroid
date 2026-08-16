@@ -270,6 +270,7 @@ class GroupSettingsActivity(
 
     override fun onOptionsItemSelected(item: MenuItem) = child.onOptionsItemSelected(item)
 
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
         if (needSave()) {
             UnsavedChangesDialogFragment().apply { key() }.show(supportFragmentManager, null)
@@ -318,6 +319,7 @@ class GroupSettingsActivity(
             ViewCompat.setOnApplyWindowInsetsListener(listView, ListListener)
         }
 
+        @Suppress("OVERRIDE_DEPRECATION")
         override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
             R.id.action_delete -> {
                 if (DataStore.editingId == 0L) {

@@ -16,6 +16,7 @@ class ProfileSelectActivity : ThemedActivity(R.layout.layout_empty),
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        @Suppress("DEPRECATION") // API 33 前 getParcelableExtra 兼容路径
         val selected = intent.getParcelableExtra<ProxyEntity>(EXTRA_SELECTED)
 
         supportFragmentManager.beginTransaction()

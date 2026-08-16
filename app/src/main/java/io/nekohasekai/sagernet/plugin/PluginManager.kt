@@ -86,6 +86,7 @@ object PluginManager {
             }
     }
 
+    @Suppress("DEPRECATION") // Bundle.get 为 Java 弃用 API，无兼容替代
     fun ComponentInfo.loadString(key: String) = when (val value = metaData.get(key)) {
         is String -> value
         is Int -> SagerNet.application.packageManager.getResourcesForApplication(applicationInfo)

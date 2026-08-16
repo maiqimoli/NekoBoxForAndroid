@@ -82,6 +82,7 @@ class StatsBar @JvmOverloads constructor(
 
     fun changeState(state: BaseService.State) {
         val activity = context as MainActivity
+        @Suppress("DEPRECATION")
         fun postWhenStarted(what: () -> Unit) = activity.lifecycleScope.launch(Dispatchers.Main) {
             delay(100L)
             activity.whenStarted { what() }

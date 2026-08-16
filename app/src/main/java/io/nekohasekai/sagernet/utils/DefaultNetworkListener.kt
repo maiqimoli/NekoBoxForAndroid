@@ -1,3 +1,5 @@
+@file:OptIn(ObsoleteCoroutinesApi::class, DelicateCoroutinesApi::class)
+
 package io.nekohasekai.sagernet.utils
 
 import androidx.annotation.RequiresApi
@@ -13,6 +15,8 @@ import io.nekohasekai.sagernet.ktx.Logs
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.ObsoleteCoroutinesApi
 import kotlinx.coroutines.channels.actor
 import kotlinx.coroutines.runBlocking
 import java.net.UnknownHostException

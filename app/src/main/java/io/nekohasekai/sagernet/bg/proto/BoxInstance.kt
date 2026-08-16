@@ -1,5 +1,10 @@
+
+
+@file:OptIn(DelicateCoroutinesApi::class)
+
 package io.nekohasekai.sagernet.bg.proto
 
+import kotlinx.coroutines.DelicateCoroutinesApi
 import android.os.SystemClock
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.bg.AbstractInstance

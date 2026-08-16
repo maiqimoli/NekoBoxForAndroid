@@ -71,6 +71,7 @@ class NativeInterface : BoxPlatformInterface, NB4AInterface {
     override fun wifiState(): String {
         val wifiManager =
             app.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        @Suppress("DEPRECATION") // WifiInfo 字段无替代
         val connectionInfo = wifiManager.connectionInfo
         return "${connectionInfo.ssid},${connectionInfo.bssid}"
     }

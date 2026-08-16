@@ -1,5 +1,10 @@
+
+
+@file:OptIn(DelicateCoroutinesApi::class)
+
 package io.nekohasekai.sagernet.bg
 
+import kotlinx.coroutines.DelicateCoroutinesApi
 import android.os.Build
 import android.os.SystemClock
 import android.system.ErrnoException

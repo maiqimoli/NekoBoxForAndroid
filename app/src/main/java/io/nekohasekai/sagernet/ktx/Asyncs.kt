@@ -1,7 +1,10 @@
 @file:Suppress("EXPERIMENTAL_API_USAGE")
 
+@file:OptIn(DelicateCoroutinesApi::class)
+
 package io.nekohasekai.sagernet.ktx
 
+import kotlinx.coroutines.DelicateCoroutinesApi
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.*

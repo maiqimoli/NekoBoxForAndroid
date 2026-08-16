@@ -1,7 +1,11 @@
 @file:SuppressLint("SoonBlockedPrivateApi")
 
+
+@file:OptIn(DelicateCoroutinesApi::class)
+
 package io.nekohasekai.sagernet.ktx
 
+import kotlinx.coroutines.DelicateCoroutinesApi
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.annotation.SuppressLint

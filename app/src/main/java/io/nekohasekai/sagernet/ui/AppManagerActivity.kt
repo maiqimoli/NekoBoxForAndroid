@@ -182,6 +182,7 @@ class AppManagerActivity : ThemedActivity() {
     private fun isProxiedApp(app: ProxiedApp) = proxiedUids[app.uid]
 
     @UiThread
+    @Suppress("DEPRECATION") // launchWhenCreated 为内联，块内含函数声明，无法用 repeatOnLifecycle 迁移
     private fun loadApps() {
         loader?.cancel()
         loader = lifecycleScope.launchWhenCreated {
@@ -224,7 +225,8 @@ class AppManagerActivity : ThemedActivity() {
         }
 
         binding.bypassGroup.check(if (DataStore.bypass) R.id.appProxyModeBypass else R.id.appProxyModeOn)
-        binding.bypassGroup.setOnCheckedChangeListener { _, checkedId ->
+        binding.bypassGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+            val checkedId = if (checkedIds.isEmpty()) View.NO_ID else checkedIds.first()
             when (checkedId) {
                 R.id.appProxyModeDisable -> {
                     DataStore.proxyApps = false

@@ -174,6 +174,7 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
 
     override fun onOptionsItemSelected(item: MenuItem) = child.onOptionsItemSelected(item)
 
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
         if (DataStore.dirty) UnsavedChangesDialogFragment().apply { key() }
             .show(supportFragmentManager, null) else super.onBackPressed()
@@ -255,6 +256,7 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
         }
 
         @SuppressLint("CheckResult")
+        @Suppress("OVERRIDE_DEPRECATION")
         override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
             R.id.action_delete -> {
                 if (DataStore.editingId == 0L) {

@@ -31,6 +31,7 @@ import moe.matsuri.nb4a.utils.Util
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.text.SimpleDateFormat
 import java.util.*
 
 class BackupFragment : NamedFragment(R.layout.layout_backup) {
@@ -39,7 +40,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
 
     var content = ""
     private val exportSettings =
-        registerForActivityResult(ActivityResultContracts.CreateDocument()) { data ->
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { data ->
             if (data != null) {
                 runOnDefaultDispatcher {
                     try {
@@ -132,7 +133,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
                 )
                 onMainDispatcher {
                     startFilesForResult(
-                        exportSettings, "nekobox_backup_${Date().toLocaleString()}.json"
+                        exportSettings, "nekobox_backup_${backupTimestamp()}.json"
                     )
                 }
             }
@@ -147,7 +148,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
                 )
                 app.cacheDir.mkdirs()
                 val cacheFile = File(
-                    app.cacheDir, "nekobox_backup_${Date().toLocaleString()}.json"
+                    app.cacheDir, "nekobox_backup_${backupTimestamp()}.json"
                 )
                 cacheFile.writeText(content)
                 onMainDispatcher {
@@ -369,5 +370,8 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
             PublicDatabase.kvPairDao.insert(settings)
         }
     }
+
+    private fun backupTimestamp(): String =
+        SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
 
 }
