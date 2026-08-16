@@ -9,6 +9,8 @@ import android.view.View
 import androidx.annotation.DrawableRes
 import androidx.appcompat.widget.TooltipCompat
 import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.vectordrawable.graphics.drawable.Animatable2Compat
@@ -116,6 +118,7 @@ class ServiceButton @JvmOverloads constructor(
             }
             else -> changeState(iconStopped, animate)
         }
+        if (animate) springBounce()
         checked = state == BaseService.State.Connected
         refreshDrawableState()
         val description = context.getText(if (state.canStop) R.string.stop else R.string.connect)
@@ -127,6 +130,27 @@ class ServiceButton @JvmOverloads constructor(
             context,
             if (enabled) PointerIcon.TYPE_HAND else PointerIcon.TYPE_WAIT
         )
+    }
+
+    private fun springBounce() {
+        val springX = SpringAnimation(this, DynamicAnimation.SCALE_X, 1f).apply {
+            spring = SpringForce(1f).apply {
+                stiffness = SpringForce.STIFFNESS_LOW
+                dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
+            }
+            setMinimumVisibleChange(DynamicAnimation.MIN_VISIBLE_CHANGE_SCALE)
+        }
+        val springY = SpringAnimation(this, DynamicAnimation.SCALE_Y, 1f).apply {
+            spring = SpringForce(1f).apply {
+                stiffness = SpringForce.STIFFNESS_LOW
+                dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
+            }
+            setMinimumVisibleChange(DynamicAnimation.MIN_VISIBLE_CHANGE_SCALE)
+        }
+        scaleX = 0.88f
+        scaleY = 0.88f
+        springX.start()
+        springY.start()
     }
 
     private fun changeState(icon: AnimatedState, animate: Boolean) {

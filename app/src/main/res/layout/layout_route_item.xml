@@ -1,12 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?><!-- Based on: https://github.com/android/platform_frameworks_base/blob/505e3ab/core/res/res/layout/simple_list_item_2.xml -->
+<?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/content"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="4dp"
-    app:cardElevation="2dp">
+    android:layout_marginStart="8dp"
+    android:layout_marginEnd="8dp"
+    android:layout_marginTop="4dp"
+    android:layout_marginBottom="4dp"
+    app:cardCornerRadius="14dp"
+    app:cardElevation="1dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="#1F888888">
 
     <LinearLayout
         android:id="@+id/content_lin"
@@ -15,11 +21,11 @@
         android:focusable="true"
         android:orientation="vertical">
 
-
         <LinearLayout
             android:id="@+id/container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <LinearLayout
@@ -29,48 +35,49 @@
                 android:layout_weight="1"
                 android:gravity="center_vertical"
                 android:paddingStart="12dp"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp">
+                android:paddingTop="10dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="6dp">
 
                 <TextView
                     android:id="@+id/profile_name"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textAppearance="?android:attr/textAppearanceSmall"
+                    android:textAppearance="?android:attr/textAppearanceMedium"
                     android:textColor="?android:attr/textColorPrimary"
+                    android:textSize="15sp"
                     android:textStyle="bold"
                     tools:text="@string/profile_name" />
             </LinearLayout>
 
-
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/subscription"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="top"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="center_vertical"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/subscriptions"
                 android:focusable="true"
-                android:padding="12dp"
+                android:padding="10dp"
                 android:visibility="gone"
                 app:srcCompat="@drawable/ic_file_cloud_queue" />
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/edit"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="top"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="center_vertical"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/edit"
                 android:focusable="true"
-                android:padding="12dp"
+                android:padding="10dp"
                 app:srcCompat="@drawable/ic_image_edit" />
 
             <LinearLayout
                 android:id="@+id/share"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="top"
+                android:layout_gravity="center_vertical"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/share"
                 android:focusable="true"
@@ -79,9 +86,9 @@
 
                 <LinearLayout
                     android:id="@+id/share_layer"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:padding="12dp">
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:gravity="center">
 
                     <androidx.appcompat.widget.AppCompatImageView
                         android:id="@+id/shareIcon"
@@ -90,17 +97,17 @@
                         app:srcCompat="@drawable/ic_social_share" />
                 </LinearLayout>
 
-
             </LinearLayout>
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="bottom"
+            android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="12dp"
-            android:paddingEnd="8dp">
+            android:paddingEnd="12dp"
+            android:paddingBottom="10dp">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -113,21 +120,21 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textAppearance="?android:attr/textAppearanceSmall"
-                    android:textColor="?attr/accentOrTextSecondary" />
+                    android:textColor="?attr/accentOrTextSecondary"
+                    android:textSize="12sp" />
 
                 <TextView
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="12dp"
                     android:id="@+id/route_outbound"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
                     android:textAppearance="?android:attr/textAppearanceSmall"
-                    android:textColor="?attr/accentOrTextSecondary" />
+                    android:textColor="?attr/accentOrTextSecondary"
+                    android:textSize="12sp" />
 
             </LinearLayout>
 
             <androidx.appcompat.widget.SwitchCompat
-                android:layout_marginBottom="2dp"
                 android:id="@+id/enable"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />

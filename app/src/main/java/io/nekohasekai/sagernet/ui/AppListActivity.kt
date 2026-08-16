@@ -14,6 +14,7 @@ import android.view.ViewGroup
 import android.widget.Filter
 import android.widget.Filterable
 import androidx.annotation.UiThread
+import androidx.collection.LruCache
 import androidx.core.util.contains
 import androidx.core.util.set
 import androidx.core.view.ViewCompat
@@ -27,6 +28,7 @@ import com.simplecityapps.recyclerview_fastscroll.views.FastScrollRecyclerView
 import io.nekohasekai.sagernet.BuildConfig
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
+import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.databinding.LayoutAppListBinding
 import io.nekohasekai.sagernet.databinding.LayoutAppsItemBinding
@@ -44,6 +46,7 @@ import kotlin.coroutines.coroutineContext
 class AppListActivity : ThemedActivity() {
     companion object {
         private const val SWITCH = "switch"
+        private val iconCache = LruCache<String, Drawable>(200)
 
         private val cachedApps
             get() = PackageCache.installedPackages.toMutableMap().apply {
@@ -56,7 +59,9 @@ class AppListActivity : ThemedActivity() {
         val packageName: String,
     ) {
         val name: CharSequence = appInfo.loadLabel(pm)    // cached for sorting
-        val icon: Drawable get() = appInfo.loadIcon(pm)
+        val icon: Drawable by lazy {
+            iconCache[packageName] ?: appInfo.loadIcon(pm).also { iconCache.put(packageName, it) }
+        }
         val uid get() = appInfo.uid
         val sys get() = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
     }
@@ -293,7 +298,8 @@ class AppListActivity : ThemedActivity() {
                         initProxiedUids(apps)
                         appsAdapter.notifyItemRangeChanged(0, appsAdapter.itemCount, SWITCH)
                         return true
-                    } catch (_: IllegalArgumentException) {
+                    } catch (e: IllegalArgumentException) {
+                        Logs.w(e)
                     }
                 }
                 Snackbar.make(binding.list, R.string.action_import_err, Snackbar.LENGTH_LONG).show()

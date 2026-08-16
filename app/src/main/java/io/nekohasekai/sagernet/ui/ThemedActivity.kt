@@ -1,5 +1,6 @@
 package io.nekohasekai.sagernet.ui
 
+import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +14,7 @@ import androidx.core.view.updatePadding
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.snackbar.Snackbar
 import io.nekohasekai.sagernet.R
+import io.nekohasekai.sagernet.utils.LocaleUtils
 import io.nekohasekai.sagernet.utils.Theme
 
 abstract class ThemedActivity : AppCompatActivity {
@@ -22,6 +24,10 @@ abstract class ThemedActivity : AppCompatActivity {
     var themeResId = 0
     var uiMode = 0
     open val isDialog = false
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleUtils.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (!isDialog) {
@@ -35,18 +41,12 @@ abstract class ThemedActivity : AppCompatActivity {
 
         uiMode = resources.configuration.uiMode
 
-        if (Build.VERSION.SDK_INT >= 35) {
-            ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { _, insets ->
-                val top = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top
-                findViewById<AppBarLayout>(R.id.appbar)?.apply {
-                    updatePadding(top = top)
-//                Logs.w("appbar $top")
-                }
-//            findViewById<NavigationView>(R.id.nav_view)?.apply {
-//                updatePadding(top = top)
-//            }
-                insets
+        ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            findViewById<AppBarLayout>(R.id.appbar)?.apply {
+                updatePadding(top = bars.top)
             }
+            insets
         }
     }
 

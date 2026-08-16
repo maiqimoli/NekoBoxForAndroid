@@ -16,6 +16,7 @@ import android.os.UserManager
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import com.google.android.material.color.DynamicColors
 import go.Seq
 import io.nekohasekai.sagernet.bg.SagerConnection
 import io.nekohasekai.sagernet.database.DataStore
@@ -39,7 +40,7 @@ class SagerNet : Application(),
     WorkConfiguration.Provider {
 
     override fun attachBaseContext(base: Context) {
-        super.attachBaseContext(base)
+        super.attachBaseContext(LocaleUtils.wrap(base))
 
         application = this
     }
@@ -54,7 +55,14 @@ class SagerNet : Application(),
     override fun onCreate() {
         super.onCreate()
 
-        Thread.setDefaultUncaughtExceptionHandler(CrashHandler)
+        // 1.7 Material 3 Monet 动态取色 — API 31+ 跟随壁纸配色，API 30- 无 op
+        DynamicColors.applyToActivitiesIfAvailable(this)
+
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            CrashHandler.uncaughtException(thread, throwable)
+            previousHandler?.uncaughtException(thread, throwable)
+        }
 
         if (isMainProcess || isBgProcess) {
             externalAssets.mkdirs()
@@ -79,6 +87,7 @@ class SagerNet : Application(),
         }
 
         if (isMainProcess) {
+            LocaleUtils.persist(this, DataStore.appLanguage)
             Theme.apply(this)
             Theme.applyNightTheme()
             runOnDefaultDispatcher {
@@ -108,11 +117,10 @@ class SagerNet : Application(),
         updateNotificationChannels()
     }
 
-    override fun getWorkManagerConfiguration(): WorkConfiguration {
-        return WorkConfiguration.Builder()
+    override val workManagerConfiguration: WorkConfiguration
+        get() = WorkConfiguration.Builder()
             .setDefaultProcessName("${BuildConfig.APPLICATION_ID}:bg")
             .build()
-    }
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
@@ -137,7 +145,7 @@ class SagerNet : Application(),
                     Intent(
                         application, MainActivity::class.java
                     ).setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+                    PendingIntent.FLAG_IMMUTABLE
                 )
             }
         }
