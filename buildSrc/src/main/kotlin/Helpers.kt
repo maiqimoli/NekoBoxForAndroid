@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // AGP 旧变体 API（AbstractAppExtension）为构建脚本兼容使用
+
 import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.gradle.AbstractAppExtension
 import com.android.build.gradle.internal.api.BaseVariantOutputImpl
@@ -61,7 +63,9 @@ fun Project.setupCommon() {
             checkAllWarnings = true
             checkReleaseBuilds = true
             warningsAsErrors = true
+            @Suppress("DEPRECATION") // AGP lint 报告输出旧 API，无功能替代需要
             textOutput = project.file("build/lint.txt")
+            @Suppress("DEPRECATION")
             htmlOutput = project.file("build/lint.html")
         }
         packaging {
@@ -81,6 +85,7 @@ fun Project.setupCommon() {
                 )
             )
         }
+        @Suppress("DEPRECATION") // AGP 变体 API 旧 DSL；迁移需重构 onVariants 回调
         (this as? AbstractAppExtension)?.apply {
             buildTypes {
                 getByName("release") {
@@ -156,7 +161,8 @@ fun Project.setupApp() {
     setupAppCommon()
 
     android.apply {
-        this as AbstractAppExtension
+        @Suppress("DEPRECATION", "UNUSED_VARIABLE") // AGP 变体 API 旧 DSL
+        val appExt = this as AbstractAppExtension
 
         buildTypes {
             getByName("release") {
@@ -209,7 +215,7 @@ fun Project.setupApp() {
         }
 
         for (abi in listOf("Arm64", "Arm", "X64", "X86")) {
-            tasks.create("assemble" + abi + "FdroidRelease") {
+            tasks.register("assemble" + abi + "FdroidRelease") {
                 dependsOn("assembleFdroidRelease")
             }
         }
