@@ -1,5 +1,8 @@
 *.iml
 .gradle
+.gradle-test-home/
+.gradle-user-home/
+.kotlin/
 .idea
 .vscode
 .DS_Store
@@ -15,6 +18,15 @@ jniLibs/
 /library/libcore_build/
 .idea/deploymentTargetDropDown.xml
 /nkmr
+/tmp/
+/tools/
+/phone-*.png
+/phone-window.xml
+/nekobox-*.png
+/whatsapp-*.png
+/nekobox_state*.xml
+/0
+/.reasonix/
 
 # submodules
 /external

@@ -34,4 +34,18 @@
 
     <issue id="InvalidPackage" severity="ignore" />
     <issue id="TrustAllX509TrustManager" severity="ignore" />
+
+    <!-- 合理豁免：外部/设计/功能需求类 -->
+    <issue id="Aligned16KB" severity="ignore" /> <!-- libgojni.so 预编译，需 go 侧 16KB 对齐重建 -->
+    <issue id="IconLauncherShape" severity="ignore" /> <!-- 启动图标设计资源 -->
+    <issue id="MonochromeLauncherIcon" severity="ignore" /> <!-- 自适应图标未提供单色版本 -->
+    <issue id="GradleDependency" severity="ignore" /> <!-- core-ktx 1.19.0 需未发布的 API 37，当前有意保持 1.18.0 -->
+    <issue id="BatteryLife" severity="ignore" /> <!-- REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 为应用核心功能 -->
+    <issue id="QueryAllPackagesPermission" severity="ignore" /> <!-- 应用列表/分流功能必需 -->
+    <issue id="ProtectedPermissions" severity="ignore" /> <!-- ${applicationId}.SERVICE 自定义权限 -->
+    <issue id="PermissionNamingConvention" severity="ignore" /> <!-- 自定义 SERVICE 权限命名为项目约定 -->
+    <issue id="VectorPath" severity="ignore" /> <!-- 长路径矢量图标，性能提示非功能性 -->
+    <issue id="UnspecifiedRegisterReceiverFlag" severity="ignore" /> <!-- BaseService 已按 API 分支传 flag，lint 静态分析局限 -->
+    <issue id="MemberExtensionConflict" severity="ignore" /> <!-- Job.cancel 成员与 kotlinx.coroutines 扩展行为一致 -->
+    <issue id="Overdraw" severity="ignore" /> <!-- 选择器背景等为设计选择 -->
 </lint>
