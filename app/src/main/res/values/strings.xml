@@ -14,6 +14,11 @@
     <string name="menu_group">Group</string>
     <string name="menu_about">About</string>
     <string name="theme">Theme</string>
+    <string name="app_language">App language</string>
+    <string name="auto_region_time_zone">Auto time zone by exit region</string>
+    <string name="auto_region_time_zone_summary">When connected, switch the system time zone based on the final exit node. Requires system or privileged SET_TIME_ZONE permission.</string>
+    <string name="language_zh_cn">Simplified Chinese</string>
+    <string name="language_en">English</string>
     <string name="document">Document</string>
     <string name="group_default">Ungrouped</string>
     <string name="quick_toggle">Toggle</string>
@@ -243,6 +248,7 @@
     <string name="action_import">Import from Clipboard</string>
     <string name="action_import_file">Import from file</string>
     <string name="action_export_msg">Successfully export!</string>
+    <string name="action_export_msg_with_path">Successfully exported to %s</string>
     <string name="action_export_err">Failed to export.</string>
     <string name="action_import_msg">Successfully import!</string>
     <string name="action_import_err">Failed to import.</string>
@@ -325,6 +331,10 @@
         card</string>
     <string name="clear_traffic_statistics">Clear traffic statistics</string>
     <string name="connection_test">Connection test</string>
+    <string name="chain_hop_single_test">single node</string>
+    <string name="chain_hop_prefix_test">via previous hops</string>
+    <string name="chain_hop_same_as_single">first hop, no transit needed</string>
+    <string name="chain_hop_detail">%1$d. %2$s (%3$s)\n   Entry: %4$s\n   Resolved IP: %5$s\n   Single node exit: %6$s\n   Previous transit chain: %7$s</string>
     <string name="connection_test_clear_results">Clear test results</string>
     <string name="connection_test_tcp_ping" translatable="false">TCPing</string>
     <string name="connection_test_tcp_ping_unavailable">TCPing unavailable</string>

@@ -1,6 +1,6 @@
 package io.nekohasekai.sagernet
 
-const val CONNECTION_TEST_URL = "http://cp.cloudflare.com/"
+const val CONNECTION_TEST_URL = "https://cp.cloudflare.com/"
 
 object Key {
 
@@ -11,6 +11,8 @@ object Key {
 
     const val APP_EXPERT = "isExpert"
     const val APP_THEME = "appTheme"
+    const val APP_LANGUAGE = "appLanguage"
+    const val AUTO_REGION_TIME_ZONE = "autoRegionTimeZone"
     const val NIGHT_THEME = "nightTheme"
     const val SERVICE_MODE = "serviceMode"
     const val MODE_VPN = "vpn"

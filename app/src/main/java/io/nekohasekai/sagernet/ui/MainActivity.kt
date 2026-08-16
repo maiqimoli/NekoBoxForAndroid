@@ -19,7 +19,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.snackbar.Snackbar
 import io.nekohasekai.sagernet.BuildConfig
-import io.nekohasekai.sagernet.GroupType
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
@@ -32,7 +31,7 @@ import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.GroupManager
 import io.nekohasekai.sagernet.database.ProfileManager
 import io.nekohasekai.sagernet.database.ProxyGroup
-import io.nekohasekai.sagernet.database.SubscriptionBean
+import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.database.preference.OnPreferenceDataStoreChangeListener
 import io.nekohasekai.sagernet.databinding.LayoutMainBinding
 import io.nekohasekai.sagernet.fmt.AbstractBean
@@ -139,7 +138,7 @@ class MainActivity : ThemedActivity(),
         val uri = intent.data ?: return
 
         runOnDefaultDispatcher {
-            if (uri.scheme == "sn" && uri.host == "subscription" || uri.scheme == "clash") {
+            if (SubscriptionImportHelper.shouldImportSubscription(uri.scheme, uri.host)) {
                 importSubscription(uri)
             } else {
                 importProfile(uri)
@@ -155,21 +154,17 @@ class MainActivity : ThemedActivity(),
     }
 
     suspend fun importSubscription(uri: Uri) {
-        val group: ProxyGroup
-
-        val url = uri.getQueryParameter("url")
-        if (!url.isNullOrBlank()) {
-            group = ProxyGroup(type = GroupType.SUBSCRIPTION)
-            val subscription = SubscriptionBean()
-            group.subscription = subscription
-
-            // cleartext format
-            subscription.link = url
-            group.name = uri.getQueryParameter("name")
-        } else {
+        val group = SubscriptionImportHelper.createDirectSubscriptionGroup(
+            uri.scheme,
+            uri.host,
+            uri.encodedPath,
+            uri.encodedQuery,
+            uri.encodedFragment,
+            uri::getQueryParameter,
+        ) ?: run {
             val data = uri.encodedQuery.takeIf { !it.isNullOrBlank() } ?: return
             try {
-                group = KryoConverters.deserialize(
+                KryoConverters.deserialize(
                     ProxyGroup().apply { export = true }, Util.zlibDecompress(Util.b64Decode(data))
                 ).apply {
                     export = false
@@ -182,12 +177,8 @@ class MainActivity : ThemedActivity(),
             }
         }
 
-        val name = group.name.takeIf { !it.isNullOrBlank() } ?: group.subscription?.link
-        ?: group.subscription?.token
-        if (name.isNullOrBlank()) return
-
-        group.name = group.name.takeIf { !it.isNullOrBlank() }
-            ?: ("Subscription #" + System.currentTimeMillis())
+        val name = SubscriptionImportHelper.fallbackGroupName(group, System.currentTimeMillis())
+        group.name = name
 
         onMainDispatcher {
 
@@ -206,7 +197,6 @@ class MainActivity : ThemedActivity(),
         }
 
     }
-
     private suspend fun finishImportSubscription(subscription: ProxyGroup) {
         GroupManager.createGroup(subscription)
         GroupUpdater.startUpdate(subscription, true)

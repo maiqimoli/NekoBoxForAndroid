@@ -3,8 +3,10 @@ package io.nekohasekai.sagernet.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.os.Parcel
 import android.os.Parcelable
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,8 +48,15 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
                         )!!.bufferedWriter().use {
                             it.write(content)
                         }
+                        val destination = exportDestinationLabel(data)
                         onMainDispatcher {
-                            snackbar(getString(R.string.action_export_msg)).show()
+                            MaterialAlertDialogBuilder(requireContext())
+                                .setTitle(R.string.action_export_msg)
+                                .setMessage(
+                                    getString(R.string.action_export_msg_with_path, destination)
+                                )
+                                .setPositiveButton(android.R.string.ok, null)
+                                .show()
                         }
                     } catch (e: Exception) {
                         Logs.w(e)
@@ -58,6 +67,45 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
                 }
             }
         }
+
+    private fun exportDestinationLabel(uri: Uri): String {
+        val path = exportFilesystemPath(uri)
+        val displayName = runCatching {
+            requireContext().contentResolver.query(uri, null, null, null, null)
+                ?.use { cursor ->
+                    cursor.moveToFirst()
+                    cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)
+                        .let(cursor::getString)
+                }
+        }.getOrNull()
+
+        return listOfNotNull(path, displayName?.takeIf { it != path }, Uri.decode(uri.toString()))
+            .distinct()
+            .joinToString("\n")
+    }
+
+    private fun exportFilesystemPath(uri: Uri): String? {
+        if (uri.scheme == "file") return uri.path
+        if (!DocumentsContract.isDocumentUri(requireContext(), uri)) return null
+
+        val documentId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+            ?: return null
+        if (documentId.startsWith("raw:")) return documentId.removePrefix("raw:")
+
+        return when (uri.authority) {
+            "com.android.externalstorage.documents" -> {
+                val parts = documentId.split(":", limit = 2)
+                val storage = parts.getOrNull(0)
+                val relativePath = parts.getOrNull(1).orEmpty()
+                if (storage.equals("primary", ignoreCase = true)) {
+                    File(Environment.getExternalStorageDirectory(), relativePath).absolutePath
+                } else {
+                    null
+                }
+            }
+            else -> null
+        }
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
