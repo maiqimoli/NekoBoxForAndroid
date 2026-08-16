@@ -74,12 +74,12 @@ dependencies {
     implementation("com.blacksquircle.ui:language-base:2.6.0")
     implementation("com.blacksquircle.ui:language-json:2.6.0")
 
-    implementation("com.squareup.okhttp3:okhttp:5.0.0-alpha.3")
-    implementation("org.yaml:snakeyaml:1.30")
+    implementation("com.squareup.okhttp3:okhttp:5.4.0")
+    implementation("org.yaml:snakeyaml:2.6")
     implementation("com.github.daniel-stoneuk:material-about-library:3.2.0-rc01")
     implementation("com.jakewharton:process-phoenix:2.1.2")
     implementation("com.esotericsoftware:kryo:5.2.1")
-    implementation("com.google.guava:guava:31.0.1-android")
+    implementation("com.google.guava:guava:33.6.0-android")
     implementation("org.ini4j:ini4j:0.5.4")
 
 
@@ -88,9 +88,9 @@ dependencies {
         exclude(group = "androidx.appcompat")
     }
 
-    implementation("androidx.room:room-runtime:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
+    implementation("androidx.room:room-runtime:2.7.2")
+    ksp("androidx.room:room-compiler:2.7.2")
+    implementation("androidx.room:room-ktx:2.7.2")
     implementation("com.github.MatrixDev.Roomigrant:RoomigrantLib:0.3.4")
     ksp("com.github.MatrixDev.Roomigrant:RoomigrantCompiler:0.3.4")
 

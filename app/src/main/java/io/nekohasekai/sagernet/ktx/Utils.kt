@@ -44,7 +44,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import moe.matsuri.nb4a.utils.NGUtil
+import java.io.Closeable
 import java.io.FileDescriptor
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.Socket
@@ -347,4 +349,12 @@ operator fun <K, V> MutableMap<K, V>.setValue(thisRef: K, property: KProperty<*>
 
     }
 
+}
+
+// Replaces okhttp3.internal.closeQuietly (removed in OkHttp 5.x)
+fun Closeable?.closeQuietly() {
+    try {
+        this?.close()
+    } catch (ignored: IOException) {
+    }
 }
