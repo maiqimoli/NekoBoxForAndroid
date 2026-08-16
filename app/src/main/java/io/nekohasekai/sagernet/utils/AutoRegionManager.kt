@@ -15,14 +15,14 @@ object AutoRegionManager {
     private const val PERMISSION_SET_TIME_ZONE = "android.permission.SET_TIME_ZONE"
     private var missingPermissionLogged = false
 
-    private data class RegionTarget(
+    internal data class RegionTarget(
         val code: String,
         val timeZone: String,
         val cjkTokens: List<String>,
         val keywords: List<String>,
     )
 
-    private val targets = listOf(
+    internal val targets = listOf(
         RegionTarget(
             "CN", "Asia/Shanghai",
             listOf("中国", "大陆", "内地", "上海", "北京", "广州", "深圳"),
@@ -191,7 +191,7 @@ object AutoRegionManager {
         return matchKeyword(texts)
     }
 
-    private fun matchLastCjkToken(texts: List<String>): RegionTarget? {
+    internal fun matchLastCjkToken(texts: List<String>): RegionTarget? {
         data class Match(val index: Int, val length: Int, val target: RegionTarget)
 
         var best: Match? = null
@@ -214,7 +214,7 @@ object AutoRegionManager {
         return best?.target
     }
 
-    private fun matchKeyword(texts: List<String>): RegionTarget? {
+    internal fun matchKeyword(texts: List<String>): RegionTarget? {
         val normalized = texts.joinToString(" ") { it.lowercase(Locale.US) }
         return targets.firstOrNull { target ->
             target.keywords.any { keyword -> normalized.contains(keyword) }
