@@ -81,7 +81,12 @@ class StatsBar @JvmOverloads constructor(
     }
 
     fun changeState(state: BaseService.State) {
-        val activity = context as MainActivity
+        // Material 3 主题下 context 可能是 ContextThemeWrapper，需解包到 Activity
+        var ctx: Context = context
+        while (ctx is android.content.ContextWrapper && ctx !is android.app.Activity) {
+            ctx = ctx.baseContext
+        }
+        val activity = ctx as MainActivity
         @Suppress("DEPRECATION")
         fun postWhenStarted(what: () -> Unit) = activity.lifecycleScope.launch(Dispatchers.Main) {
             delay(100L)
