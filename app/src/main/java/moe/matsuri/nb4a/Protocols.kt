@@ -43,7 +43,21 @@ object Protocols {
 
     fun Context.getProtocolColor(type: Int): Int {
         return when (type) {
-            TYPE_NEKO -> getColorAttr(android.R.attr.textColorPrimary)
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_SOCKS,
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_HTTP -> android.graphics.Color.parseColor("#42A5F5")
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_SS -> android.graphics.Color.parseColor("#66BB6A")
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_VMESS -> android.graphics.Color.parseColor("#26C6DA")
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_TROJAN,
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_TROJAN_GO -> android.graphics.Color.parseColor("#FFA726")
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_HYSTERIA,
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_TUIC,
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_MIERU -> android.graphics.Color.parseColor("#FF7043")
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_CHAIN -> android.graphics.Color.parseColor("#AB47BC")
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_WG,
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_SSH,
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_SHADOWTLS,
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_ANYTLS -> android.graphics.Color.parseColor("#26A69A")
+            io.nekohasekai.sagernet.database.ProxyEntity.TYPE_NEKO -> getColorAttr(android.R.attr.textColorPrimary)
             else -> getColorAttr(R.attr.accentOrTextSecondary)
         }
     }

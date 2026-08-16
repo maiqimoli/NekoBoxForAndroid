@@ -110,34 +110,34 @@ import moe.matsuri.nb4a.Protocols.getProtocolColor
                     updateTraffic(proxyEntity)
                     return
                 } else if (proxyEntity.status == 1) {
-                    profileStatus.text = gf.getString(R.string.available, proxyEntity.ping)
-                    val badgeColor = when {
-                        proxyEntity.ping <= 100 -> R.color.material_green_500
-                        proxyEntity.ping <= 300 -> R.color.material_orange_500
-                        else -> R.color.material_red_500
+                    profileStatus.text = "● ${proxyEntity.ping} ms"
+                    val (textColor, bgColor) = when {
+                        proxyEntity.ping <= 100 -> R.color.color_cyber_emerald to R.color.color_cyber_badge_emerald_bg
+                        proxyEntity.ping <= 300 -> R.color.color_cyber_amber to R.color.color_cyber_badge_amber_bg
+                        else -> R.color.color_cyber_coral to R.color.color_cyber_badge_coral_bg
                     }
-                    profileStatus.setTextColor(view.context.getColour(R.color.material_light_white))
+                    profileStatus.setTextColor(view.context.getColour(textColor))
                     profileStatus.background = DrawableCompat.wrap(
                         view.context.getDrawable(R.drawable.bg_latency_badge)!!.mutate()
                     ).apply {
-                        DrawableCompat.setTint(this, view.context.getColour(badgeColor))
+                        DrawableCompat.setTint(this, view.context.getColour(bgColor))
                     }
                 } else {
-                    profileStatus.setTextColor(view.context.getColour(R.color.material_light_white))
+                    profileStatus.setTextColor(view.context.getColour(R.color.color_cyber_coral))
                     profileStatus.background = DrawableCompat.wrap(
                         view.context.getDrawable(R.drawable.bg_latency_badge)!!.mutate()
                     ).apply {
-                        DrawableCompat.setTint(this, view.context.getColour(R.color.material_red_500))
+                        DrawableCompat.setTint(this, view.context.getColour(R.color.color_cyber_badge_coral_bg))
                     }
                     if (proxyEntity.status == 2) {
-                        profileStatus.text = proxyEntity.error
+                        profileStatus.text = "● " + (proxyEntity.error ?: "")
                     }
                 }
 
                 if (proxyEntity.status == 3) {
                     val err = proxyEntity.error ?: gf.getString(R.string.error_placeholder)
                     val msg = Protocols.genFriendlyMsg(err)
-                    profileStatus.text = if (msg != err) msg else gf.getString(R.string.unavailable)
+                    profileStatus.text = "● " + (if (msg != err) msg else gf.getString(R.string.unavailable))
                     profileStatus.setOnClickListener {
                         gf.alert(err).tryToShow()
                     }
