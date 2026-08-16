@@ -23,6 +23,7 @@ import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.databinding.LayoutEditConfigBinding
 import io.nekohasekai.sagernet.ktx.getColorAttr
 import io.nekohasekai.sagernet.ktx.readableMessage
+import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.toStringPretty
 import io.nekohasekai.sagernet.ui.ThemedActivity
 import io.nekohasekai.sagernet.widget.ListListener
@@ -89,18 +90,21 @@ class ConfigEditActivity : ThemedActivity() {
             try {
                 binding.editor.insert(binding.editor.tab())
             } catch (e: Exception) {
+                Logs.w(e)
             }
         }
         binding.actionUndo.setOnClickListener {
             try {
                 binding.editor.undo()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logs.w(e)
             }
         }
         binding.actionRedo.setOnClickListener {
             try {
                 binding.editor.redo()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logs.w(e)
             }
         }
         binding.actionFormat.setOnClickListener {
@@ -114,6 +118,7 @@ class ConfigEditActivity : ThemedActivity() {
             try {
                 binding.editor.insert(char)
             } catch (e: Exception) {
+                Logs.w(e)
             }
         }
         extendedKeyboard.setHasFixedSize(true)

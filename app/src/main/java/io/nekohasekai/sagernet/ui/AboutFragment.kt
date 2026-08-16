@@ -152,9 +152,8 @@ class AboutFragment : ToolbarFragment(R.layout.layout_about) {
                             }
                         }
                         .apply {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                val pm = app.getSystemService(Context.POWER_SERVICE) as PowerManager
-                                if (!pm.isIgnoringBatteryOptimizations(app.packageName)) {
+                            val pm = app.getSystemService(Context.POWER_SERVICE) as PowerManager
+                            if (!pm.isIgnoringBatteryOptimizations(app.packageName)) {
                                     addItem(
                                         MaterialAboutActionItem.Builder()
                                             .icon(R.drawable.ic_baseline_running_with_errors_24)
@@ -169,10 +168,9 @@ class AboutFragment : ToolbarFragment(R.layout.layout_about) {
                                                 )
                                             }
                                             .build())
-                                }
-                            }
                         }
-                        .build())
+                    }
+                    .build())
                 .addCard(
                     MaterialAboutCard.Builder()
                         .outline(false)

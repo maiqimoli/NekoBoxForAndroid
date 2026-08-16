@@ -35,10 +35,7 @@ class LogcatFragment : ToolbarFragment(R.layout.layout_logcat),
 
         binding = LayoutLogcatBinding.bind(view)
 
-        if (Build.VERSION.SDK_INT >= 23) {
-            binding.textview.breakStrategy = 0 // simple
-        }
-
+        binding.textview.breakStrategy = 0 // simple
         ViewCompat.setOnApplyWindowInsetsListener(binding.root, ListListener)
 
         reloadSession()

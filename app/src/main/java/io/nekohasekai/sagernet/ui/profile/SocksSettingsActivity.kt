@@ -7,6 +7,7 @@ import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.preference.EditTextPreferenceModifiers
+import io.nekohasekai.sagernet.fmt.socks.parsePlainSOCKS
 import io.nekohasekai.sagernet.fmt.socks.SOCKSBean
 import moe.matsuri.nb4a.ui.SimpleMenuPreference
 
@@ -42,9 +43,12 @@ class SocksSettingsActivity : ProfileSettingsActivity<SOCKSBean>() {
         rootKey: String?,
     ) {
         addPreferencesFromResource(R.xml.socks_preferences)
-        findPreference<EditTextPreference>(Key.SERVER_PORT)!!.apply {
+        val profileName = findPreference<EditTextPreference>(Key.PROFILE_NAME)!!
+        val address = findPreference<EditTextPreference>(Key.SERVER_ADDRESS)!!
+        val port = findPreference<EditTextPreference>(Key.SERVER_PORT)!!.apply {
             setOnBindEditTextListener(EditTextPreferenceModifiers.Port)
         }
+        val username = findPreference<EditTextPreference>(Key.SERVER_USERNAME)!!
         val password = findPreference<EditTextPreference>(Key.SERVER_PASSWORD)!!.apply {
             summaryProvider = PasswordSummaryProvider
         }
@@ -54,10 +58,25 @@ class SocksSettingsActivity : ProfileSettingsActivity<SOCKSBean>() {
             password.isVisible = version == SOCKSBean.PROTOCOL_SOCKS5
         }
 
-        updateProtocol(DataStore.protocolVersion)
+        updateProtocol(DataStore.serverProtocolInt)
         protocol.setOnPreferenceChangeListener { _, newValue ->
             updateProtocol((newValue as String).toInt())
             true
+        }
+        address.setOnPreferenceChangeListener { _, newValue ->
+            val socks = parsePlainSOCKS(newValue as? String ?: return@setOnPreferenceChangeListener true)
+                ?: return@setOnPreferenceChangeListener true
+
+            address.text = socks.serverAddress
+            port.text = socks.serverPort.toString()
+            username.text = socks.username
+            password.text = socks.password
+            if (profileName.text.isNullOrBlank() && socks.name.isNotBlank()) {
+                profileName.text = socks.name
+            }
+            protocol.value = SOCKSBean.PROTOCOL_SOCKS5.toString()
+            updateProtocol(SOCKSBean.PROTOCOL_SOCKS5)
+            false
         }
     }
 }

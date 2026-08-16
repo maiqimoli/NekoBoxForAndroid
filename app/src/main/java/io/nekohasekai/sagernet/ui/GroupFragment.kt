@@ -495,7 +495,8 @@ class GroupFragment : ToolbarFragment(R.layout.layout_group),
                             Util.timeStamp2Text(this.toLong() * 1000)
                         )
                     }
-                } catch (_: NumberFormatException) {
+                } catch (e: NumberFormatException) {
+                    Logs.w(e)
                     // ignore
                 }
 
