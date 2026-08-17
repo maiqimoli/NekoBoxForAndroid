@@ -1,6 +1,5 @@
 package io.nekohasekai.sagernet.ui
 
-import android.text.format.Formatter
 import android.view.View
 import android.widget.TextView
 import androidx.appcompat.widget.SearchView
@@ -9,21 +8,19 @@ import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import com.google.android.material.chip.Chip
 import com.google.android.material.tabs.TabLayout
-import io.nekohasekai.sagernet.GroupType
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.SagerDatabase
-import io.nekohasekai.sagernet.ktx.getColour
 import io.nekohasekai.sagernet.ktx.onMainDispatcher
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.ktx.scrollTo
 import io.nekohasekai.sagernet.ktx.snackbar
-import java.util.Date
 
 class ConfigurationUiController(private val owner: ConfigurationFragment) {
     private var profileQuery = ""
     private var profileFilter = ProfileFilter.fromKey(DataStore.profileListFilter)
     private var pendingScrollProfileId: Long? = null
+    private var groupTabAlignAction: Runnable? = null
 
     fun onQueryTextChange(query: String): Boolean {
         if (query != profileQuery) owner.exitBatchSelection()
@@ -156,54 +153,48 @@ class ConfigurationUiController(private val owner: ConfigurationFragment) {
             owner.tabLayout,
             false,
         ).also { tab.customView = it }
-        customView.findViewById<TextView>(R.id.group_tab_title).text = group.displayName()
-        val statusView = customView.findViewById<TextView>(R.id.group_tab_status)
-        val subscription = group.subscription
-        if (group.type != GroupType.SUBSCRIPTION || subscription == null) {
-            statusView.isGone = true
-            return
-        }
+        sizeGroupTabsForTwoVisibleSlots()
+        val groupName = group.displayName()
+        customView.findViewById<TextView>(R.id.group_tab_title).text = groupName
+        TooltipCompat.setTooltipText(customView, groupName)
+    }
 
-        val now = System.currentTimeMillis() / 1000L
-        val status = SubscriptionStatus.from(subscription, now)
-        val compactParts = mutableListOf<String>()
-        status.traffic?.remainingBytes?.let { remaining ->
-            compactParts += owner.getString(
-                R.string.subscription_remaining_short,
-                Formatter.formatFileSize(owner.requireContext(), remaining),
-            )
-        }
-        status.lastUpdatedEpochSeconds?.let { updated ->
-            compactParts += owner.getString(
-                R.string.subscription_updated_short,
-                android.text.format.DateFormat.format("M/d", Date(updated * 1000L)),
-            )
-        }
-        when (status.expiryState) {
-            SubscriptionExpiryState.EXPIRED -> compactParts += owner.getString(
-                R.string.subscription_expired_short
-            )
-            SubscriptionExpiryState.ACTIVE -> status.expiresAtEpochSeconds?.let { expiresAt ->
-                val days = ((expiresAt - now + 86399L) / 86400L).coerceAtLeast(1L)
-                compactParts += if (days <= 30L) {
-                    owner.getString(R.string.subscription_expires_days_short, days)
-                } else {
-                    owner.getString(
-                        R.string.subscription_expires_date_short,
-                        android.text.format.DateFormat.format("M/d", Date(expiresAt * 1000L)),
-                    )
-                }
+    private fun sizeGroupTabsForTwoVisibleSlots() {
+        owner.tabLayout.post {
+            val tabCount = owner.tabLayout.tabCount
+            val availableWidth = owner.tabLayout.width -
+                owner.tabLayout.paddingStart - owner.tabLayout.paddingEnd
+            if (tabCount == 0 || availableWidth <= 0) return@post
+
+            val visibleSlots = minOf(tabCount, 2)
+            val tabWidth = availableWidth / visibleSlots
+            for (index in 0 until tabCount) {
+                val tabView = owner.tabLayout.getTabAt(index)?.view ?: continue
+                val params = tabView.layoutParams ?: continue
+                if (params.width == tabWidth) continue
+                params.width = tabWidth
+                tabView.layoutParams = params
             }
-            SubscriptionExpiryState.UNKNOWN -> Unit
         }
-        if (compactParts.isEmpty()) {
-            compactParts += owner.getString(R.string.subscription_never_updated_short)
+    }
+
+    fun alignGroupTabWindow(selectedPosition: Int) {
+        groupTabAlignAction?.let(owner.tabLayout::removeCallbacks)
+        val action = Runnable {
+            val tabCount = owner.tabLayout.tabCount
+            if (tabCount <= 1) return@Runnable
+            val firstVisiblePosition = selectedPosition.coerceIn(0, tabCount - 2)
+            val firstVisibleTab = owner.tabLayout.getTabAt(firstVisiblePosition) ?: return@Runnable
+            owner.tabLayout.scrollTo(
+                (firstVisibleTab.view.left - owner.tabLayout.paddingStart).coerceAtLeast(0),
+                0,
+            )
         }
-        statusView.text = compactParts.joinToString(" · ")
-        statusView.setTextColor(owner.requireContext().getColour(
-            if (status.isExpired) R.color.cyber_coral_text else R.color.cyber_text_secondary
-        ))
-        statusView.isVisible = true
-        TooltipCompat.setTooltipText(customView, statusView.text)
+        groupTabAlignAction = action
+        owner.tabLayout.postDelayed(action, GROUP_TAB_ALIGNMENT_DELAY_MS)
+    }
+
+    private companion object {
+        const val GROUP_TAB_ALIGNMENT_DELAY_MS = 350L
     }
 }

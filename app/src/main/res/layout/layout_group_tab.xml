@@ -2,16 +2,16 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="48dp"
+    android:layout_height="@dimen/group_tab_content_height"
     android:baselineAligned="false"
     android:background="@drawable/bg_group_tab_state"
     android:gravity="center"
     android:orientation="vertical"
     android:paddingStart="8dp"
-    android:paddingTop="4dp"
+    android:paddingTop="@dimen/group_tab_content_vertical_padding"
     android:paddingEnd="8dp"
-    android:paddingBottom="4dp"
-    android:translationY="7dp">
+    android:paddingBottom="@dimen/group_tab_content_vertical_padding"
+    android:translationY="@dimen/group_tab_content_translation_y">
 
     <TextView
         android:id="@+id/group_tab_title"
@@ -25,21 +25,5 @@
         android:textSize="12sp"
         android:textStyle="bold"
         tools:text="Airport" />
-
-    <TextView
-        android:id="@+id/group_tab_status"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:ellipsize="end"
-        android:fontFamily="@font/jetbrains_mono"
-        android:gravity="center"
-        android:includeFontPadding="false"
-        android:maxLines="1"
-        android:textColor="@color/cyber_text_secondary"
-        android:textSize="11sp"
-        android:visibility="gone"
-        tools:text="12 GB · 8/17 · 3d"
-        tools:visibility="visible" />
 
 </LinearLayout>

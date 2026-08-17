@@ -225,6 +225,7 @@ class ConfigurationFragment @JvmOverloads constructor(
             if (adapter.groupList.size > position) {
                 DataStore.selectedGroup = adapter.groupList[position].id
             }
+            uiController.alignGroupTabWindow(position)
             groupPager.post {
                 getCurrentProfileGroupFragment()?.let(::applyFiltersTo)
             }

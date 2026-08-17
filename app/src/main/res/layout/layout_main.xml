@@ -25,7 +25,7 @@
             android:layout_gravity="bottom"
             android:layout_marginStart="12dp"
             android:layout_marginEnd="12dp"
-            android:layout_marginBottom="12dp"
+            android:layout_marginBottom="@dimen/stats_bar_bottom_margin"
             android:nextFocusUp="@+id/fab"
             app:backgroundTint="@color/cyber_surface_elevated"
             app:contentInsetStart="0dp"
@@ -37,10 +37,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="?android:attr/selectableItemBackground"
-                android:paddingStart="18dp"
-                android:paddingTop="14dp"
-                android:paddingEnd="12dp"
-                android:paddingBottom="14dp">
+                android:paddingStart="@dimen/stats_bar_content_padding_start"
+                android:paddingTop="@dimen/stats_bar_content_padding_top"
+                android:paddingEnd="@dimen/stats_bar_content_padding_end"
+                android:paddingBottom="@dimen/stats_bar_content_padding_bottom">
 
                 <LinearLayout
                     android:id="@+id/connection_info"
@@ -73,7 +73,7 @@
                             tools:text="已连接" />
 
                         <View
-                            android:layout_width="18dp"
+                            android:layout_width="@dimen/stats_bar_status_gap"
                             android:layout_height="1dp" />
 
                         <TextView
@@ -107,7 +107,7 @@
                         android:id="@+id/exit_location"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
+                        android:layout_marginTop="@dimen/stats_bar_exit_top_margin"
                         android:ellipsize="end"
                         android:fontFamily="@font/jetbrains_mono"
                         android:gravity="start"
@@ -123,10 +123,10 @@
 
                 <FrameLayout
                     android:id="@+id/service_control"
-                    android:layout_width="76dp"
-                    android:layout_height="76dp"
+                    android:layout_width="@dimen/stats_bar_control_size"
+                    android:layout_height="@dimen/stats_bar_control_size"
                     android:layout_marginStart="10dp"
-                    android:translationY="3dp"
+                    android:translationY="@dimen/stats_bar_control_translation_y"
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent">
@@ -139,7 +139,7 @@
                         android:max="1"
                         android:visibility="invisible"
                         app:indicatorColor="@color/cyber_emerald_text"
-                        app:indicatorSize="76dp"
+                        app:indicatorSize="@dimen/stats_bar_control_size"
                         app:trackCornerRadius="@dimen/mtrl_progress_track_thickness"
                         app:trackColor="@color/cyber_stroke"
                         app:trackThickness="5dp" />
@@ -152,8 +152,8 @@
                         android:elevation="6dp"
                         android:nextFocusDown="@+id/stats"
                         app:backgroundTint="@color/cyber_surface_elevated"
-                        app:fabCustomSize="62dp"
-                        app:maxImageSize="28dp"
+                        app:fabCustomSize="@dimen/stats_bar_fab_size"
+                        app:maxImageSize="@dimen/stats_bar_fab_icon_size"
                         app:pressedTranslationZ="4dp"
                         app:rippleColor="@color/color_cyber_badge_emerald_bg"
                         app:srcCompat="@drawable/ic_service_idle"

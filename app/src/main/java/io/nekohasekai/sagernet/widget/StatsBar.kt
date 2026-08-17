@@ -58,6 +58,14 @@ class StatsBar @JvmOverloads constructor(
         return behavior
     }
 
+    fun showForPrimaryScreen() {
+        allowShow = true
+        hideOnScroll = false
+        post {
+            if (allowShow && isAttachedToWindow) performShow()
+        }
+    }
+
     class YourBehavior(val getAllowShow: () -> Boolean) : Behavior() {
 
         override fun onNestedScroll(

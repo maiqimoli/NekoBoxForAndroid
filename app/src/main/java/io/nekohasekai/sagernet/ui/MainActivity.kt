@@ -312,7 +312,7 @@ class MainActivity : ThemedActivity(),
     @SuppressLint("CommitTransaction")
     fun displayFragment(fragment: ToolbarFragment) {
         if (fragment is ConfigurationFragment) {
-            binding.stats.allowShow = true
+            binding.stats.showForPrimaryScreen()
             binding.fab.show()
         } else if (!DataStore.showBottomBar) {
             binding.stats.allowShow = false

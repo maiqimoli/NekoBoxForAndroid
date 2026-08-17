@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Preserve the tuned roomy layout when the window has enough vertical space. -->
+    <dimen name="profile_card_vertical_margin">5dp</dimen>
+    <dimen name="profile_selected_rail_vertical_margin">8dp</dimen>
+    <dimen name="profile_name_top_margin">10dp</dimen>
+    <dimen name="profile_address_bottom_padding">4dp</dimen>
+    <dimen name="profile_badge_bottom_padding">9dp</dimen>
+    <dimen name="profile_status_vertical_padding">3dp</dimen>
+    <dimen name="profile_chain_bottom_padding">10dp</dimen>
+
+    <dimen name="group_tab_outer_top_margin">4dp</dimen>
+    <dimen name="group_tab_outer_bottom_margin">6dp</dimen>
+    <dimen name="group_tab_min_height">48dp</dimen>
+    <dimen name="group_tab_content_height">44dp</dimen>
+    <dimen name="group_tab_content_vertical_padding">3dp</dimen>
+    <dimen name="group_tab_content_translation_y">3dp</dimen>
+    <dimen name="profile_filter_bottom_padding">6dp</dimen>
+
+    <dimen name="stats_bar_bottom_margin">12dp</dimen>
+    <dimen name="stats_bar_content_padding_start">18dp</dimen>
+    <dimen name="stats_bar_content_padding_top">14dp</dimen>
+    <dimen name="stats_bar_content_padding_end">12dp</dimen>
+    <dimen name="stats_bar_content_padding_bottom">14dp</dimen>
+    <dimen name="stats_bar_status_gap">18dp</dimen>
+    <dimen name="stats_bar_exit_top_margin">6dp</dimen>
+    <dimen name="stats_bar_control_size">76dp</dimen>
+    <dimen name="stats_bar_control_translation_y">3dp</dimen>
+    <dimen name="stats_bar_fab_size">62dp</dimen>
+    <dimen name="stats_bar_fab_icon_size">28dp</dimen>
+
+    <dimen name="main_list_padding_bottom">120dp</dimen>
+</resources>

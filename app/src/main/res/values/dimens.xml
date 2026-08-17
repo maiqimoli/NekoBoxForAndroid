@@ -1,5 +1,34 @@
 <resources>
     <dimen name="qrcode_size">264dp</dimen>
-    <dimen name="main_list_padding_bottom">120dp</dimen>
+    <!-- Main-screen compact defaults for devices below 850dp available height. -->
+    <dimen name="profile_card_vertical_margin">3dp</dimen>
+    <dimen name="profile_selected_rail_vertical_margin">7dp</dimen>
+    <dimen name="profile_name_top_margin">7dp</dimen>
+    <dimen name="profile_address_bottom_padding">2dp</dimen>
+    <dimen name="profile_badge_bottom_padding">6dp</dimen>
+    <dimen name="profile_status_vertical_padding">2dp</dimen>
+    <dimen name="profile_chain_bottom_padding">8dp</dimen>
+
+    <dimen name="group_tab_outer_top_margin">3dp</dimen>
+    <dimen name="group_tab_outer_bottom_margin">4dp</dimen>
+    <dimen name="group_tab_min_height">44dp</dimen>
+    <dimen name="group_tab_content_height">40dp</dimen>
+    <dimen name="group_tab_content_vertical_padding">2dp</dimen>
+    <dimen name="group_tab_content_translation_y">2dp</dimen>
+    <dimen name="profile_filter_bottom_padding">4dp</dimen>
+
+    <dimen name="stats_bar_bottom_margin">8dp</dimen>
+    <dimen name="stats_bar_content_padding_start">16dp</dimen>
+    <dimen name="stats_bar_content_padding_top">10dp</dimen>
+    <dimen name="stats_bar_content_padding_end">10dp</dimen>
+    <dimen name="stats_bar_content_padding_bottom">10dp</dimen>
+    <dimen name="stats_bar_status_gap">14dp</dimen>
+    <dimen name="stats_bar_exit_top_margin">4dp</dimen>
+    <dimen name="stats_bar_control_size">68dp</dimen>
+    <dimen name="stats_bar_control_translation_y">2dp</dimen>
+    <dimen name="stats_bar_fab_size">56dp</dimen>
+    <dimen name="stats_bar_fab_icon_size">26dp</dimen>
+
+    <dimen name="main_list_padding_bottom">104dp</dimen>
     <dimen name="bottom_sheet_padding">8dp</dimen>
 </resources>
