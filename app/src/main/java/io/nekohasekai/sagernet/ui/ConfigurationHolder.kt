@@ -42,7 +42,7 @@ import moe.matsuri.nb4a.Protocols.getProtocolColor
             val trafficText: TextView = view.findViewById(R.id.traffic_text)
             val chainDetailsContainer: LinearLayout = view.findViewById(R.id.chain_details_container)
             val chainDetails: TextView = view.findViewById(R.id.chain_details)
-            val selectedView: LinearLayout = view.findViewById(R.id.selected_view)
+            val selectedView: View = view.findViewById(R.id.selected_view)
             val editButton: ImageView = view.findViewById(R.id.edit)
             val shareLayout: LinearLayout = view.findViewById(R.id.share)
             val shareLayer: LinearLayout = view.findViewById(R.id.share_layer)
