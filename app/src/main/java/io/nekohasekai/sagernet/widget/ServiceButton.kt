@@ -14,6 +14,7 @@ import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.vectordrawable.graphics.drawable.Animatable2Compat
 import androidx.vectordrawable.graphics.drawable.AnimatedVectorDrawableCompat
@@ -66,7 +67,7 @@ class ServiceButton @JvmOverloads constructor(
     private val iconConnecting by lazy {
         AnimatedState(R.drawable.ic_service_connecting) {
             hideProgress()
-            delayedAnimation = (context as LifecycleOwner).lifecycleScope.launchWhenStarted {
+            delayedAnimation = lifecycleOwner()?.lifecycleScope?.launchWhenStarted {
                 delay(context.resources.getInteger(android.R.integer.config_mediumAnimTime) + 1000L)
                 isIndeterminate = true
                 show()
@@ -85,6 +86,19 @@ class ServiceButton @JvmOverloads constructor(
     private var checked = false
     private var delayedAnimation: Job? = null
     private lateinit var progress: BaseProgressIndicator<*>
+
+    private fun lifecycleOwner(): LifecycleOwner? {
+        findViewTreeLifecycleOwner()?.let { return it }
+        var current: Context? = context
+        while (current is android.content.ContextWrapper) {
+            if (current is LifecycleOwner) return current
+            val base = current.baseContext
+            if (base === current) break
+            current = base
+        }
+        return current as? LifecycleOwner
+    }
+
     fun initProgress(progress: BaseProgressIndicator<*>) {
         this.progress = progress
         progress.progressDrawable?.addSpringAnimationEndListener(this)

@@ -53,7 +53,8 @@ class ServiceNotification(
         }
     }
 
-    var listenPostSpeed = true
+    @Volatile
+    var listenPostSpeed = SagerNet.power.isInteractive
 
     suspend fun postNotificationSpeedUpdate(stats: SpeedDisplayData) {
         useBuilder {

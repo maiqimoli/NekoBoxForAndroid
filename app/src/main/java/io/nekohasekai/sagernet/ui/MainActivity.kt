@@ -19,7 +19,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.snackbar.Snackbar
 import io.nekohasekai.sagernet.BuildConfig
-import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.aidl.ISagerNetService
@@ -48,7 +47,6 @@ import io.nekohasekai.sagernet.ktx.parseProxies
 import io.nekohasekai.sagernet.ktx.readableMessage
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import moe.matsuri.nb4a.utils.Util
-import java.io.File
 
 class MainActivity : ThemedActivity(),
     SagerConnection.Callback,
@@ -361,6 +359,7 @@ class MainActivity : ThemedActivity(),
         msg: String? = null,
         animate: Boolean = false,
     ) {
+        val previousState = DataStore.serviceState
         DataStore.serviceState = state
 
         if (Build.VERSION.SDK_INT >= 30) {
@@ -373,9 +372,8 @@ class MainActivity : ThemedActivity(),
             }
         }
 
-        binding.fab.changeState(state, DataStore.serviceState, animate)
-        binding.stats.changeState(state)
-        if (msg != null) snackbar(getString(R.string.vpn_error, msg)).show()
+        binding.fab.changeState(state, previousState, animate)
+        binding.stats.changeState(state, msg)
     }
 
     override fun snackbarInternal(text: CharSequence): Snackbar {
@@ -416,7 +414,7 @@ class MainActivity : ThemedActivity(),
             val hasAnyProfile = SagerDatabase.proxyDao.getAll().isNotEmpty()
             onMainDispatcher {
                 when {
-                    selectedProfile != null -> checkRuleAssetsBeforeConnect()
+                    selectedProfile != null -> checkRuleAssetsBeforeConnect { connect.launch(null) }
 
                     hasAnyProfile -> {
                         MaterialAlertDialogBuilder(this@MainActivity)
@@ -438,37 +436,6 @@ class MainActivity : ThemedActivity(),
         }
     }
 
-    private fun checkRuleAssetsBeforeConnect() {
-        if (DataStore.skipRuleAssetsCheck) {
-            connect.launch(null)
-            return
-        }
-        val assetsDir = SagerNet.application.externalAssets
-        val missingAssets = listOf("geoip.db", "geosite.db").filter {
-            !File(assetsDir, it).isFile
-        }
-        if (missingAssets.isEmpty()) {
-            connect.launch(null)
-            return
-        }
-        MaterialAlertDialogBuilder(this).setTitle(R.string.route_assets_missing_title)
-            .setMessage(
-                getString(
-                    R.string.route_assets_missing_message,
-                    missingAssets.joinToString(", ")
-                )
-            )
-            .setPositiveButton(R.string.route_assets_missing_download) { _, _ ->
-                startActivity(Intent(this, AssetsActivity::class.java))
-            }
-            .setNegativeButton(R.string.route_assets_missing_connect_anyway) { _, _ ->
-                DataStore.skipRuleAssetsCheck = true
-                connect.launch(null)
-            }
-            .setNeutralButton(android.R.string.cancel, null)
-            .show()
-    }
-
     // may NOT called when app is in background
     // ONLY do UI update here, write DB in bg process
     override fun cbSpeedUpdate(stats: SpeedDisplayData) {
@@ -485,24 +452,17 @@ class MainActivity : ThemedActivity(),
         val old = DataStore.selectedProxy
         DataStore.selectedProxy = id
         DataStore.currentProfile = id
+        ProfileUiState.markRecent(id)
+        (supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ConfigurationFragment)
+            ?.getCurrentProfileGroupFragment()?.adapter?.refreshUiState()
         runOnDefaultDispatcher {
             ProfileManager.postUpdate(old, true)
             ProfileManager.postUpdate(id, true)
         }
     }
 
-    override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
-        when (key) {
-            Key.SERVICE_MODE -> onBinderDied()
-            Key.PROXY_APPS, Key.BYPASS_MODE, Key.INDIVIDUAL -> {
-                if (DataStore.serviceState.canStop) {
-                    snackbar(getString(R.string.need_reload)).setAction(R.string.apply) {
-                        SagerNet.reloadService()
-                    }.show()
-                }
-            }
-        }
-    }
+    override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) =
+        handlePreferenceStoreChange(key)
 
     override fun onStart() {
         connection.updateConnectionId(SagerConnection.CONNECTION_ID_MAIN_ACTIVITY_FOREGROUND)
@@ -521,28 +481,7 @@ class MainActivity : ThemedActivity(),
         connection.disconnect(this)
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (super.onKeyDown(keyCode, event)) return true
-                binding.drawerLayout.open()
-                navigation.requestFocus()
-            }
-
-            KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                if (binding.drawerLayout.isOpen) {
-                    binding.drawerLayout.close()
-                    return true
-                }
-            }
-        }
-
-        if (super.onKeyDown(keyCode, event)) return true
-        if (binding.drawerLayout.isOpen) return false
-
-        val fragment =
-            supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ToolbarFragment
-        return fragment != null && fragment.onKeyDown(keyCode, event)
-    }
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
+        handleKeyDown(keyCode, event) { super.onKeyDown(keyCode, event) }
 
 }

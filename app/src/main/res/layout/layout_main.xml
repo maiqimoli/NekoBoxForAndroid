@@ -18,108 +18,150 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <!-- We double trackThickness as half of it will be invisible -->
-        <com.google.android.material.progressindicator.CircularProgressIndicator
-            android:id="@+id/fabProgress"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:max="1"
-            android:visibility="invisible"
-            app:indicatorColor="?colorMaterial100"
-            app:layout_anchor="@+id/fab"
-            app:layout_anchorGravity="center"
-            app:layout_behavior="io.nekohasekai.sagernet.widget.FabProgressBehavior"
-            app:trackCornerRadius="@dimen/mtrl_progress_track_thickness"
-            app:trackThickness="8dp" />
-
-        <io.nekohasekai.sagernet.widget.ServiceButton
-            android:id="@+id/fab"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:elevation="6dp"
-            android:nextFocusDown="@+id/stats"
-            app:backgroundTint="?fabColorBackground"
-            app:layout_anchor="@id/stats"
-            app:pressedTranslationZ="6dp"
-            app:srcCompat="@drawable/ic_service_idle" />
-
         <io.nekohasekai.sagernet.widget.StatsBar
             android:id="@+id/stats"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginBottom="12dp"
             android:nextFocusUp="@+id/fab"
-            app:backgroundTint="?colorMaterial300"
+            app:backgroundTint="@color/cyber_surface_elevated"
             app:contentInsetStart="0dp"
-            app:fabCradleMargin="8dp"
-            app:fabCradleRoundedCornerRadius="16dp"
             app:hideOnScroll="true"
-            app:layout_scrollFlags="enterAlways|scroll">
+            app:layout_scrollFlags="enterAlways|scroll"
+            app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.SagerNet.CyberDock">
 
-            <LinearLayout
+            <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="?android:attr/selectableItemBackground"
-                android:orientation="vertical"
-                android:paddingStart="16dp"
-                android:paddingTop="10dp"
-                android:paddingEnd="16dp"
-                android:paddingBottom="10dp">
+                android:paddingStart="18dp"
+                android:paddingTop="14dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="14dp">
 
                 <LinearLayout
-                    android:layout_width="wrap_content"
+                    android:id="@+id/connection_info"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:orientation="vertical"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toStartOf="@+id/service_control"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
+
+                    <LinearLayout
+                        android:id="@+id/status_speed_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/status"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:fontFamily="@font/jetbrains_mono"
+                            android:letterSpacing="0.04"
+                            android:maxLines="1"
+                            android:textColor="@color/cyber_text_secondary"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            tools:text="已连接" />
+
+                        <View
+                            android:layout_width="18dp"
+                            android:layout_height="1dp" />
+
+                        <TextView
+                            android:id="@+id/tx"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:fontFamily="@font/jetbrains_mono"
+                            android:singleLine="true"
+                            android:textColor="@color/cyber_cyan_text"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            tools:text="▲ 0 B/s" />
+
+                        <TextView
+                            android:id="@+id/rx"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:ellipsize="end"
+                            android:fontFamily="@font/jetbrains_mono"
+                            android:singleLine="true"
+                            android:textColor="@color/cyber_emerald_text"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            tools:text="▼ 0 B/s" />
+
+                    </LinearLayout>
 
                     <TextView
-                        android:id="@+id/tx"
-                        android:layout_width="wrap_content"
+                        android:id="@+id/exit_location"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:background="@drawable/bg_speed_pill_tx"
-                        android:ellipsize="marquee"
-                        android:paddingStart="8dp"
-                        android:paddingTop="2dp"
-                        android:paddingEnd="8dp"
-                        android:paddingBottom="2dp"
-                        android:singleLine="true"
-                        android:textColor="@color/color_cyber_cyan"
-                        android:textSize="11sp"
-                        android:textStyle="bold"
-                        tools:text="▲ 0 B/s" />
+                        android:layout_marginTop="6dp"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/jetbrains_mono"
+                        android:gravity="start"
+                        android:lineSpacingExtra="1dp"
+                        android:maxLines="2"
+                        android:textColor="@color/cyber_emerald_text"
+                        android:textSize="10sp"
+                        android:visibility="invisible"
+                        tools:text="出口 203.0.113.8 · Hong Kong · Hong Kong · HK · Example ISP"
+                        tools:visibility="visible" />
 
-                    <TextView
-                        android:id="@+id/rx"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:background="@drawable/bg_speed_pill_rx"
-                        android:ellipsize="marquee"
-                        android:paddingStart="8dp"
-                        android:paddingTop="2dp"
-                        android:paddingEnd="8dp"
-                        android:paddingBottom="2dp"
-                        android:singleLine="true"
-                        android:textColor="@color/color_cyber_emerald"
-                        android:textSize="11sp"
-                        android:textStyle="bold"
-                        tools:text="▼ 0 B/s" />
                 </LinearLayout>
 
-                <TextView
-                    android:id="@+id/status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="fill_horizontal"
-                    android:layout_marginTop="4dp"
-                    android:ellipsize="end"
-                    android:maxLines="1"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    tools:text="@string/connection_test_available" />
+                <FrameLayout
+                    android:id="@+id/service_control"
+                    android:layout_width="76dp"
+                    android:layout_height="76dp"
+                    android:layout_marginStart="10dp"
+                    android:translationY="3dp"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
 
-            </LinearLayout>
+                    <com.google.android.material.progressindicator.CircularProgressIndicator
+                        android:id="@+id/fabProgress"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:max="1"
+                        android:visibility="invisible"
+                        app:indicatorColor="@color/cyber_emerald_text"
+                        app:indicatorSize="76dp"
+                        app:trackCornerRadius="@dimen/mtrl_progress_track_thickness"
+                        app:trackColor="@color/cyber_stroke"
+                        app:trackThickness="5dp" />
+
+                    <io.nekohasekai.sagernet.widget.ServiceButton
+                        android:id="@+id/fab"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:elevation="6dp"
+                        android:nextFocusDown="@+id/stats"
+                        app:backgroundTint="@color/cyber_surface_elevated"
+                        app:fabCustomSize="62dp"
+                        app:maxImageSize="28dp"
+                        app:pressedTranslationZ="4dp"
+                        app:rippleColor="@color/color_cyber_badge_emerald_bg"
+                        app:srcCompat="@drawable/ic_service_idle"
+                        app:tint="@color/service_button_icon" />
+
+                </FrameLayout>
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
 
         </io.nekohasekai.sagernet.widget.StatsBar>
 

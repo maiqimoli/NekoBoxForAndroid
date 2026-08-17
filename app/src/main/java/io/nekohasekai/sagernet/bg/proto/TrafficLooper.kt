@@ -20,9 +20,11 @@ class TrafficLooper
     private var job: Job? = null
     private val idMap = mutableMapOf<Long, TrafficUpdater.TrafficLooperData>() // id to 1 data
     private val tagMap = mutableMapOf<String, TrafficUpdater.TrafficLooperData>() // tag to 1 data
+    private val lastBroadcastTraffic = mutableMapOf<Long, Pair<Long, Long>>()
 
     suspend fun stop() {
-        job?.cancel()
+        job?.cancelAndJoin()
+        job = null
         // finally traffic post
         if (!DataStore.profileTrafficStatistics) return
         val traffic = mutableMapOf<Long, TrafficData>()
@@ -82,6 +84,7 @@ class TrafficLooper
 
     private suspend fun loop() {
         val delayMs = DataStore.speedInterval.toLong()
+        val backgroundDelayMs = maxOf(delayMs, 5_000L)
         val showDirectSpeed = DataStore.showDirectSpeed
         val profileTrafficStatistics = DataStore.profileTrafficStatistics
         if (delayMs == 0L) return
@@ -91,8 +94,9 @@ class TrafficLooper
 
         // for display
         val itemBypass = TrafficUpdater.TrafficLooperData(tag = TAG_BYPASS)
+        var hadForegroundCallback = false
 
-        while (sc.isActive) {
+        while (currentCoroutineContext().isActive) {
             proxy = data.proxy
             if (proxy == null) {
                 delay(delayMs)
@@ -132,7 +136,7 @@ class TrafficLooper
             }
 
             trafficUpdater.updateAll()
-            if (!sc.isActive) return
+            if (!currentCoroutineContext().isActive) return
 
             // add all non-bypass to "main"
             var mainTxRate = 0L
@@ -159,29 +163,42 @@ class TrafficLooper
             )
 
             // broadcast (MainActivity)
-            if (data.state == BaseService.State.Connected
-                && data.binder.callbackIdMap.containsValue(SagerConnection.CONNECTION_ID_MAIN_ACTIVITY_FOREGROUND)
-            ) {
-                data.binder.broadcast { b ->
-                    if (data.binder.callbackIdMap[b] == SagerConnection.CONNECTION_ID_MAIN_ACTIVITY_FOREGROUND) {
-                        b.cbSpeedUpdate(speed)
-                        if (profileTrafficStatistics) {
-                            idMap.forEach { (id, item) ->
-                                b.cbTrafficUpdate(
-                                    TrafficData(id = id, rx = item.rx, tx = item.tx) // display
-                                )
+            val hasForegroundCallback = data.state == BaseService.State.Connected &&
+                    data.binder.callbackIdMap.containsValue(
+                        SagerConnection.CONNECTION_ID_MAIN_ACTIVITY_FOREGROUND
+                    )
+            if (hasForegroundCallback) {
+                val forceTrafficSnapshot = !hadForegroundCallback
+                val trafficUpdates = if (profileTrafficStatistics) {
+                    buildList {
+                        idMap.forEach { (id, item) ->
+                            if (id <= 0L) return@forEach
+                            val current = item.rx to item.tx
+                            if (forceTrafficSnapshot || lastBroadcastTraffic[id] != current) {
+                                add(TrafficData(id = id, rx = item.rx, tx = item.tx))
+                                lastBroadcastTraffic[id] = current
                             }
                         }
                     }
+                } else {
+                    emptyList()
+                }
+                data.binder.broadcast { b ->
+                    if (data.binder.callbackIdMap[b] == SagerConnection.CONNECTION_ID_MAIN_ACTIVITY_FOREGROUND) {
+                        b.cbSpeedUpdate(speed)
+                        trafficUpdates.forEach(b::cbTrafficUpdate)
+                    }
                 }
             }
+            hadForegroundCallback = hasForegroundCallback
 
             // ServiceNotification
             data.notification?.apply {
-                if (listenPostSpeed) postNotificationSpeedUpdate(speed)
+                if (!hasForegroundCallback && listenPostSpeed) postNotificationSpeedUpdate(speed)
             }
 
-            delay(delayMs)
+            val notificationActive = data.notification?.listenPostSpeed == true
+            delay(if (hasForegroundCallback || notificationActive) delayMs else backgroundDelayMs)
         }
     }
 }

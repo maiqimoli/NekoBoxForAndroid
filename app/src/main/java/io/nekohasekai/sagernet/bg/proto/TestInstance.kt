@@ -5,38 +5,38 @@ import io.nekohasekai.sagernet.bg.GuardedProcessPool
 import io.nekohasekai.sagernet.database.ProxyEntity
 import io.nekohasekai.sagernet.fmt.buildConfig
 import io.nekohasekai.sagernet.ktx.Logs
-import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
-import io.nekohasekai.sagernet.ktx.tryResume
-import io.nekohasekai.sagernet.ktx.tryResumeWithException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import libcore.Libcore
 import moe.matsuri.nb4a.net.LocalResolverImpl
-import kotlin.coroutines.suspendCoroutine
+import kotlin.coroutines.coroutineContext
 
 class TestInstance(profile: ProxyEntity, val link: String, private val timeout: Int) :
     BoxInstance(profile) {
 
-    suspend fun doTest(): Int {
-        return suspendCoroutine { c ->
+    suspend fun doTest(): Int = withContext(Dispatchers.IO) {
+        this@TestInstance.use {
             processes = GuardedProcessPool {
                 Logs.w(it)
-                c.tryResumeWithException(it)
             }
-            runOnDefaultDispatcher {
-                use {
-                    try {
-                        init()
-                        launch()
-                        if (processes.processCount > 0) {
-                            // wait for plugin start
-                            delay(500)
-                        }
-                        c.tryResume(Libcore.urlTest(box, link, timeout))
-                    } catch (e: Exception) {
-                        c.tryResumeWithException(e)
-                    }
-                }
+            coroutineContext.ensureActive()
+            init()
+            coroutineContext.ensureActive()
+            launch()
+            if (processes.processCount > 0) {
+                // wait for plugin start
+                delay(500)
             }
+            val samples = ArrayList<Int>(LATENCY_SAMPLE_COUNT)
+            repeat(LATENCY_SAMPLE_COUNT) { index ->
+                coroutineContext.ensureActive()
+                samples += Libcore.urlTest(box, link, timeout)
+                coroutineContext.ensureActive()
+                if (index < LATENCY_SAMPLE_COUNT - 1) delay(75L)
+            }
+            medianLatency(samples)
         }
     }
 

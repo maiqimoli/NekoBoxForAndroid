@@ -3,6 +3,7 @@ package io.nekohasekai.sagernet.bg
 import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
+import android.net.Network
 import android.os.PowerManager
 import io.nekohasekai.sagernet.SagerNet
 
@@ -14,6 +15,7 @@ class ProxyService : Service(), BaseService.Interface {
 
     override var wakeLock: PowerManager.WakeLock? = null
     override var upstreamInterfaceName: String? = null
+    override var upstreamNetwork: Network? = null
 
     @SuppressLint("WakelockTimeout")
     override fun acquireWakeLock() {

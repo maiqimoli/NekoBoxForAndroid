@@ -23,12 +23,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.net.toUri
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.core.view.size
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceDataStore
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -37,6 +40,8 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
@@ -100,6 +105,7 @@ import io.nekohasekai.sagernet.widget.UndoSnackbarManager
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -114,6 +120,7 @@ import moe.matsuri.nb4a.ui.ConnectionTestNotification
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.UnknownHostException
+import java.util.Date
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
@@ -136,11 +143,36 @@ class ConfigurationFragment @JvmOverloads constructor(
     lateinit var adapter: GroupPagerAdapter
     lateinit var tabLayout: TabLayout
     lateinit var groupPager: ViewPager2
+    lateinit var filterGroup: ChipGroup
+    private val uiController by lazy { ConfigurationUiController(this) }
+    private val batchActions by lazy { ConfigurationBatchActions(this) }
 
     val alwaysShowAddress by lazy { DataStore.alwaysShowAddress }
     val expandedChainIds = ConcurrentHashMap.newKeySet<Long>()
     val chainHopDetails = ConcurrentHashMap<Long, String>()
     val chainHopTesting = ConcurrentHashMap.newKeySet<Long>()
+    val testingProfileIds = ConcurrentHashMap.newKeySet<Long>()
+
+    fun isBatchSelecting() = batchActions.isSelecting
+
+    fun isBatchSelected(profileId: Long) = batchActions.isSelected(profileId)
+
+    fun beginBatchSelection(initialProfileId: Long? = null) = batchActions.beginBatchSelection(initialProfileId)
+
+    fun toggleBatchSelection(profileId: Long) = batchActions.toggleBatchSelection(profileId)
+
+    internal fun exitBatchSelection() = batchActions.exit()
+
+    internal fun isFilterGroupInitialized() = ::filterGroup.isInitialized
+
+    fun updateProfileTesting(profileId: Long, testing: Boolean) {
+        if (testing) testingProfileIds.add(profileId) else testingProfileIds.remove(profileId)
+        runOnMainDispatcher {
+            val listAdapter = getCurrentProfileGroupFragment()?.adapter ?: return@runOnMainDispatcher
+            val index = listAdapter.configurationIdList.indexOf(profileId)
+            if (index >= 0) listAdapter.notifyItemChanged(index, ConfigurationPayload.LATENCY)
+        }
+    }
 
     fun getCurrentProfileGroupFragment(): ProfileGroupFragment? {
         return try {
@@ -187,14 +219,31 @@ class ConfigurationFragment @JvmOverloads constructor(
                 DataStore.selectedGroup = adapter.groupList[position].id
             }
         }
+
+        override fun onPageSelected(position: Int) {
+            exitBatchSelection()
+            if (adapter.groupList.size > position) {
+                DataStore.selectedGroup = adapter.groupList[position].id
+            }
+            groupPager.post {
+                getCurrentProfileGroupFragment()?.let(::applyFiltersTo)
+            }
+        }
     }
 
-    override fun onQueryTextChange(query: String): Boolean {
-        getCurrentProfileGroupFragment()?.adapter?.filter(query)
-        return false
-    }
+    override fun onQueryTextChange(query: String): Boolean = uiController.onQueryTextChange(query)
 
     override fun onQueryTextSubmit(query: String): Boolean = false
+
+    fun applyFiltersTo(fragment: ProfileGroupFragment) = uiController.applyFiltersTo(fragment)
+
+    fun focusCurrentProfile() = uiController.focusCurrentProfile()
+
+    fun consumePendingScroll(fragment: ProfileGroupFragment) = uiController.consumePendingScroll(fragment)
+
+    fun updateFilterCounts(counts: ProfileFilterCounts) = uiController.updateFilterCounts(counts)
+
+    fun bindGroupTab(tab: TabLayout.Tab, position: Int) = uiController.bindGroupTab(tab, position)
 
     @SuppressLint("DetachAndAttachSameFragment")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -237,17 +286,17 @@ class ConfigurationFragment @JvmOverloads constructor(
 
         groupPager = view.findViewById(R.id.group_pager)
         tabLayout = view.findViewById(R.id.group_tab)
+        filterGroup = view.findViewById(R.id.profile_filter)
+        uiController.bindFilters(view)
         adapter = GroupPagerAdapter(this)
         ProfileManager.addListener(adapter)
         GroupManager.addListener(adapter)
 
         groupPager.adapter = adapter
-        groupPager.offscreenPageLimit = 2
+        groupPager.offscreenPageLimit = 1
 
         TabLayoutMediator(tabLayout, groupPager) { tab, position ->
-            if (adapter.groupList.size > position) {
-                tab.text = adapter.groupList[position].displayName()
-            }
+            bindGroupTab(tab, position)
             tab.view.setOnLongClickListener { // clear toast
                 true
             }
@@ -278,6 +327,12 @@ class ConfigurationFragment @JvmOverloads constructor(
         }
 
         DataStore.profileCacheStore.registerChangeListener(this)
+        viewLifecycleOwner.lifecycleScope.launch {
+            while (isActive) {
+                delay(60_000L)
+                getCurrentProfileGroupFragment()?.adapter?.refreshTestAges()
+            }
+        }
     }
 
     override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
@@ -299,6 +354,7 @@ class ConfigurationFragment @JvmOverloads constructor(
     }
 
     override fun onDestroy() {
+        exitBatchSelection()
         DataStore.profileCacheStore.unregisterChangeListener(this)
 
         if (::adapter.isInitialized) {
@@ -387,8 +443,12 @@ class ConfigurationFragment @JvmOverloads constructor(
     }
 
     @OptIn(DelicateCoroutinesApi::class)
-    fun urlTest() {
-        urlTestImpl(this)
+    fun urlTest(profileIds: Set<Long>? = null) {
+        if (DataStore.runningTest) {
+            snackbar(R.string.connection_test_already_running).show()
+            return
+        }
+        urlTestImpl(this, profileIds)
     }
 
     val exportConfig =

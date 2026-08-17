@@ -153,6 +153,12 @@ object AutoRegionManager {
         }
     }
 
+    fun resolveRegionCode(profile: ProxyEntity): String? {
+        val exitProfile = resolveEffectiveFinalExit(profile)
+        val code = (match(exitProfile) ?: match(profile))?.code ?: return null
+        return code.substringBefore('-')
+    }
+
     private fun canSetTimeZone(context: Context): Boolean {
         return context.checkCallingOrSelfPermission(PERMISSION_SET_TIME_ZONE) ==
                 PackageManager.PERMISSION_GRANTED

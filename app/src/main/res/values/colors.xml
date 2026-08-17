@@ -298,6 +298,28 @@
     <color name="color_cyber_badge_amber_bg">#18FFB300</color>
     <color name="color_cyber_badge_coral_bg">#18FF4D4D</color>
 
+    <!-- Cyber-Clean semantic palette. Base resources describe the light surface;
+         values-night provides the OLED counterpart. -->
+    <color name="cyber_background">#F3F6FA</color>
+    <color name="cyber_surface">#FFFFFFFF</color>
+    <color name="cyber_surface_elevated">#F8FAFD</color>
+    <color name="cyber_surface_selected">#E7F9F2</color>
+    <color name="cyber_stroke">#C8D2DE</color>
+    <color name="cyber_stroke_soft">#7A9AAAAA</color>
+    <color name="cyber_text_primary">#141B24</color>
+    <color name="cyber_text_secondary">#617083</color>
+    <color name="cyber_cyan_text">#006C7D</color>
+    <color name="cyber_emerald_text">#007451</color>
+    <color name="cyber_amber_text">#855B00</color>
+    <color name="cyber_coral_text">#B3261E</color>
+    <color name="cyber_protocol_blue">#1769AA</color>
+    <color name="cyber_protocol_green">#267A3E</color>
+    <color name="cyber_protocol_cyan">#00778A</color>
+    <color name="cyber_protocol_orange">#A45100</color>
+    <color name="cyber_protocol_coral">#B43A22</color>
+    <color name="cyber_protocol_purple">#7046A3</color>
+    <color name="cyber_protocol_teal">#08776C</color>
+
     <color name="color_ng_black_accent">#00E599</color>
     <color name="color_ng_black_primary">#0B0E14</color>
 

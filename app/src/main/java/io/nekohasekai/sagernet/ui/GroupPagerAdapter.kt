@@ -4,6 +4,7 @@ import android.view.View
 import androidx.core.view.isGone
 import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
+import com.google.android.material.tabs.TabLayout
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.GroupManager
 import io.nekohasekai.sagernet.database.ProfileManager
@@ -24,6 +25,15 @@ class GroupPagerAdapter(private val fragment: ConfigurationFragment) :
     var selectedGroupIndex = 0
     var groupList: ArrayList<ProxyGroup> = ArrayList()
     var groupFragments: HashMap<Long, ProfileGroupFragment> = HashMap()
+
+    private fun updateTabMode() {
+        fragment.tabLayout.tabMode = if (groupList.size <= 2) {
+            TabLayout.MODE_FIXED
+        } else {
+            TabLayout.MODE_SCROLLABLE
+        }
+        fragment.tabLayout.tabGravity = TabLayout.GRAVITY_FILL
+    }
 
     fun reload(now: Boolean = false) {
 
@@ -60,6 +70,7 @@ class GroupPagerAdapter(private val fragment: ConfigurationFragment) :
             if (runFunc != null) {
                 runFunc {
                     groupList = newGroupList
+                    updateTabMode()
                     notifyDataSetChanged()
                     if (set) fragment.groupPager.setCurrentItem(selectedGroupIndex, false)
                     val hideTab = groupList.size < 2
@@ -102,6 +113,7 @@ class GroupPagerAdapter(private val fragment: ConfigurationFragment) :
     override suspend fun groupAdd(group: ProxyGroup) {
         fragment.tabLayout.post {
             groupList.add(group)
+            updateTabMode()
 
             if (groupList.any { !it.ungrouped }) fragment.tabLayout.post {
                 fragment.tabLayout.visibility = View.VISIBLE
@@ -118,6 +130,7 @@ class GroupPagerAdapter(private val fragment: ConfigurationFragment) :
 
         fragment.tabLayout.post {
             groupList.removeAt(index)
+            updateTabMode()
             notifyItemRemoved(index)
         }
     }
@@ -127,7 +140,8 @@ class GroupPagerAdapter(private val fragment: ConfigurationFragment) :
         if (index == -1) return
 
         fragment.tabLayout.post {
-            fragment.tabLayout.getTabAt(index)?.text = group.displayName()
+            groupList[index] = group
+            fragment.tabLayout.getTabAt(index)?.let { fragment.bindGroupTab(it, index) }
         }
     }
 

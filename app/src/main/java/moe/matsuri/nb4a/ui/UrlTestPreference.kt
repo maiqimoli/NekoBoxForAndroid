@@ -41,7 +41,7 @@ constructor(
                 if (newConcurrent == null || newConcurrent <= 0) {
                     newConcurrent = 5
                 }
-                DataStore.connectionTestConcurrent = newConcurrent
+                DataStore.connectionTestConcurrent = newConcurrent.coerceIn(1, 16)
             }
             true
         }

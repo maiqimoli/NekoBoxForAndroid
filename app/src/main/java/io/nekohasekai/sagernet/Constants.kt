@@ -69,6 +69,10 @@ object Key {
 
     const val PROFILE_DIRTY = "profileDirty"
     const val PROFILE_ID = "profileId"
+    const val PROFILE_LIST_FILTER = "profileListFilter"
+    const val PROFILE_FAVORITES = "profileFavorites"
+    const val PROFILE_RECENT = "profileRecent"
+    const val PROFILE_TEST_TIMES = "profileTestTimes"
     const val PROFILE_NAME = "profileName"
     const val PROFILE_GROUP = "profileGroup"
     const val PROFILE_CURRENT = "profileCurrent"

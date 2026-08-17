@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ProxyInfo
+import android.net.Network
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.PowerManager
@@ -36,6 +37,7 @@ class VpnService : BaseVpnService(),
     private var metered = false
 
     override var upstreamInterfaceName: String? = null
+    override var upstreamNetwork: Network? = null
 
     override suspend fun startProcesses() {
         DataStore.vpnService = this
@@ -51,7 +53,7 @@ class VpnService : BaseVpnService(),
     }
 
     @Suppress("EXPERIMENTAL_API_USAGE")
-    override fun killProcesses() {
+    override suspend fun killProcesses() {
         conn?.close()
         conn = null
         super.killProcesses()
@@ -199,11 +201,12 @@ class VpnService : BaseVpnService(),
         return conn!!.fd
     }
 
-    fun updateUnderlyingNetwork(builder: Builder? = null) {
-        SagerNet.underlyingNetwork?.let {
-            builder?.setUnderlyingNetworks(arrayOf(SagerNet.underlyingNetwork))
-                ?: setUnderlyingNetworks(arrayOf(SagerNet.underlyingNetwork))
-        }
+    fun updateUnderlyingNetwork(
+        builder: Builder? = null,
+        network: Network? = SagerNet.underlyingNetwork,
+    ) {
+        val networks = network?.let { arrayOf(it) }
+        builder?.setUnderlyingNetworks(networks) ?: setUnderlyingNetworks(networks)
     }
 
     override fun onRevoke() = stopRunner()

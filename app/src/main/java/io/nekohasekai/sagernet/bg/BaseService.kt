@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Network
 import android.os.*
 import android.widget.Toast
 import io.nekohasekai.sagernet.Action
@@ -26,6 +27,7 @@ import libcore.Libcore
 import moe.matsuri.nb4a.Protocols
 import moe.matsuri.nb4a.utils.Util
 import java.net.UnknownHostException
+import java.util.concurrent.ConcurrentHashMap
 
 class BaseService {
 
@@ -93,10 +95,11 @@ class BaseService {
         private val callbacks = object : RemoteCallbackList<ISagerNetServiceCallback>() {
             override fun onCallbackDied(callback: ISagerNetServiceCallback?, cookie: Any?) {
                 super.onCallbackDied(callback, cookie)
+                callback?.let(callbackIdMap::remove)
             }
         }
 
-        val callbackIdMap = mutableMapOf<ISagerNetServiceCallback, Int>()
+        val callbackIdMap = ConcurrentHashMap<ISagerNetServiceCallback, Int>()
 
         override val coroutineContext = Dispatchers.Main.immediate + Job()
 
@@ -222,15 +225,13 @@ class BaseService {
             else startService(Intent(this, javaClass))
         }
 
-        fun killProcesses() {
+        suspend fun killProcesses() {
             data.proxy?.close()
             wakeLock?.apply {
                 release()
                 wakeLock = null
             }
-            runOnDefaultDispatcher {
-                DefaultNetworkListener.stop(this)
-            }
+            DefaultNetworkListener.stop(this)
         }
 
         fun stopRunner(restart: Boolean = false, msg: String? = null) {
@@ -272,22 +273,27 @@ class BaseService {
 
         // networks
         var upstreamInterfaceName: String?
+        var upstreamNetwork: Network?
 
         suspend fun preInit() {
-            DefaultNetworkListener.start(this) {
-                SagerNet.connectivity.getLinkProperties(it)?.also { link ->
-                    SagerNet.underlyingNetwork = it
-                    DataStore.vpnService?.updateUnderlyingNetwork()
-                    //
-                    val oldName = upstreamInterfaceName
-                    if (oldName != link.interfaceName) {
-                        upstreamInterfaceName = link.interfaceName
-                    }
-                    if (oldName != null && upstreamInterfaceName != null && oldName != upstreamInterfaceName) {
-                        Logs.d("Network changed: $oldName -> $upstreamInterfaceName")
-                        if (DataStore.networkChangeResetConnections) {
-                            Libcore.resetAllConnections(true)
-                        }
+            DefaultNetworkListener.start(this) { network ->
+                SagerNet.underlyingNetwork = network
+                DataStore.vpnService?.updateUnderlyingNetwork(network = network)
+                if (network == null) {
+                    upstreamNetwork = null
+                    upstreamInterfaceName = null
+                    return@start
+                }
+
+                val link = SagerNet.connectivity.getLinkProperties(network) ?: return@start
+                val oldNetwork = upstreamNetwork
+                val oldName = upstreamInterfaceName
+                upstreamNetwork = network
+                upstreamInterfaceName = link.interfaceName
+                if (oldNetwork != null && oldNetwork != network) {
+                    Logs.d("Network changed: $oldName/$oldNetwork -> ${link.interfaceName}/$network")
+                    if (DataStore.networkChangeResetConnections) {
+                        Libcore.resetAllConnections(true)
                     }
                 }
             }
@@ -355,7 +361,7 @@ class BaseService {
             }
 
             data.changeState(State.Connecting)
-            runOnMainDispatcher {
+            val connectingJob = data.binder.launch(start = CoroutineStart.LAZY) {
                 try {
                     data.notification = createNotification(ServiceNotification.genTitle(profile))
 
@@ -393,9 +399,13 @@ class BaseService {
                         false, "${getString(R.string.service_failed)}: ${exc.readableMessage}"
                     )
                 } finally {
-                    data.connectingJob = null
+                    if (data.connectingJob === coroutineContext[Job]) {
+                        data.connectingJob = null
+                    }
                 }
             }
+            data.connectingJob = connectingJob
+            connectingJob.start()
             return Service.START_NOT_STICKY
         }
     }

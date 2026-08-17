@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/cyber_background"
     android:orientation="vertical"
     tools:context=".ui.ConfigurationFragment">
 
@@ -16,17 +17,100 @@
         android:id="@+id/group_tab"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="?colorPrimary"
-        android:elevation="4dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="6dp"
+        android:background="@drawable/bg_segmented_container"
+        android:elevation="0dp"
+        android:minHeight="56dp"
         android:visibility="gone"
-        app:tabIndicatorColor="?tabIndicatorColor"
-        app:tabIndicatorFullWidth="false"
+        app:tabIndicatorColor="@android:color/transparent"
+        app:tabIndicatorFullWidth="true"
+        app:tabIndicatorHeight="0dp"
         app:tabMode="scrollable"
-        app:tabPaddingStart="16dp"
-        app:tabRippleColor="?tabRippleColor"
-        app:tabSelectedTextColor="?tabSelectedTextColor"
-        app:tabTextColor="?tabTextColor"
+        app:tabPaddingStart="4dp"
+        app:tabPaddingEnd="4dp"
+        app:tabRippleColor="@color/cyber_stroke_soft"
+        app:tabSelectedTextColor="@color/cyber_text_primary"
+        app:tabTextColor="@color/cyber_text_secondary"
         app:tabUnboundedRipple="false" />
+
+    <HorizontalScrollView
+        android:id="@+id/profile_filter_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/cyber_background"
+        android:clipToPadding="false"
+        android:fillViewport="false"
+        android:paddingStart="8dp"
+        android:paddingTop="1dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="6dp"
+        android:scrollbars="none">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/profile_filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:chipSpacingHorizontal="4dp"
+            app:selectionRequired="true"
+            app:singleLine="true"
+            app:singleSelection="true">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/filter_all"
+                style="@style/Widget.SagerNet.CyberFilterChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="@string/filter_all" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/filter_recent"
+                style="@style/Widget.SagerNet.CyberFilterChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/filter_recent" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/filter_hk"
+                style="@style/Widget.SagerNet.CyberFilterChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/filter_hk" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/filter_us"
+                style="@style/Widget.SagerNet.CyberFilterChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/filter_us" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/filter_jp"
+                style="@style/Widget.SagerNet.CyberFilterChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/filter_jp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/filter_fast"
+                style="@style/Widget.SagerNet.CyberFilterChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/filter_fast" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/filter_favorites"
+                style="@style/Widget.SagerNet.CyberFilterChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/filter_favorites" />
+
+        </com.google.android.material.chip.ChipGroup>
+
+    </HorizontalScrollView>
 
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/group_pager"

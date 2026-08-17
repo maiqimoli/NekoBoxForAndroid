@@ -85,6 +85,13 @@
     <string name="speed_detail">Proxy： %1$s↑ %2$s↓\nDirect： %3$s↑ %4$s↓</string>
     <string name="speed">%s/s</string>
     <string name="connection_test_testing">Testing…</string>
+    <string name="test_result_expired">expired</string>
+    <string name="test_result_just_now">now</string>
+    <string name="test_result_minutes_short">%1$dm</string>
+    <string name="test_result_hours_short">%1$dh</string>
+    <string name="test_result_days_short">%1$dd</string>
+    <string name="test_method_tcp" translatable="false">TCP</string>
+    <string name="test_method_url" translatable="false">URL</string>
     <string name="connection_test_available">Success: HTTPS handshake took %dms</string>
     <string name="connection_test_available_http">Success: HTTP handshake took %dms</string>
     <string name="connection_test_error">Failed: %s</string>
@@ -115,6 +122,42 @@
     <string name="password">Password</string>
     <string name="enc_method">Encrypt Method</string>
     <string name="protocol">Protocol</string>
+    <string name="filter_all">All</string>
+    <string name="filter_favorites">Favorites</string>
+    <string name="filter_recent">Recent</string>
+    <string name="filter_fast">Fast</string>
+    <string name="filter_hk">HK</string>
+    <string name="filter_us">US</string>
+    <string name="filter_jp">JP</string>
+    <string name="filter_count_format">%1$s %2$d</string>
+    <string name="jump_to_current_profile">Go to active profile</string>
+    <string name="current_profile_unavailable">No active profile to locate</string>
+    <string name="batch_operations">Batch operations</string>
+    <string name="select_all">Select all</string>
+    <string name="batch_no_profiles">No visible profiles to select</string>
+    <string name="batch_add_favorite">Add favorites</string>
+    <string name="batch_remove_favorite">Remove favorites</string>
+    <string name="batch_favorite_added">Selected profiles added to favorites</string>
+    <string name="batch_favorite_removed">Selected profiles removed from favorites</string>
+    <string name="batch_test">Test latency</string>
+    <string name="batch_delete_title">Delete selected profiles?</string>
+    <string name="batch_delete_active_profile">Stop the connection before deleting the active profile</string>
+    <string name="connection_test_already_running">A latency test is already running</string>
+    <plurals name="batch_selected">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <plurals name="batch_delete_message">
+        <item quantity="one">Delete %d profile? You can undo this action.</item>
+        <item quantity="other">Delete %d profiles? You can undo this action.</item>
+    </plurals>
+    <string name="exit_location_loading">Checking exit…</string>
+    <string name="exit_location_format">Exit %1$s</string>
+    <string name="exit_location_content_description">Current exit %1$s</string>
+    <string name="exit_location_interaction_hint">Tap to copy · Hold to refresh</string>
+    <string name="exit_location_copied">Exit information copied</string>
+    <string name="exit_location_refreshing">Refreshing exit information…</string>
+    <string name="vpn_connected_short">Connected</string>
     <string name="protocol_param">Protocol Param</string>
     <string name="obfs">Obfs</string>
     <string name="obfs_param">Obfs Param</string>
@@ -172,6 +215,8 @@
     <string name="profile_empty_add_hint">No servers yet. Add or import a server first.</string>
     <string name="profile_empty_title">No servers here</string>
     <string name="profile_empty_subtitle">Add or import a server to get started.</string>
+    <string name="profile_filter_empty_title">No matching servers</string>
+    <string name="profile_filter_empty_subtitle">Choose another filter or run a connection test first.</string>
     <string name="route_not_asset">Not an asset file: excepted .db, but %s</string>
     <string name="route_opt_bypass_lan">Bypass LAN</string>
     <string name="route_opt_block_ads">Block ADs</string>
@@ -209,6 +254,9 @@
     <string name="stop">Stop</string>
     <string name="stopping">Shutting down…</string>
     <string name="vpn_error">%s</string>
+    <string name="connection_error_title">Connection error</string>
+    <string name="connection_error_inline">Error · %1$s</string>
+    <string name="connection_error_tap_details">%1$s · Tap for details</string>
     <string name="vpn_permission_denied">Permission denied to create a VPN service</string>
     <string name="reboot_required">Failed to start VPN service. You might need to reboot your
         device.</string>
@@ -220,6 +268,11 @@
     <string name="settings">Settings</string>
     <string name="edit">Edit</string>
     <string name="share">Share</string>
+    <string name="more_actions">More actions</string>
+    <string name="add_favorite">Add to favorites</string>
+    <string name="remove_favorite">Remove from favorites</string>
+    <string name="favorite_added">Added to favorites</string>
+    <string name="favorite_removed">Removed from favorites</string>
     <string name="add_profile">Add Profile</string>
     <string name="select_profile">Select Profile</string>
     <string name="action_socks" translatable="false">SOCKS</string>
@@ -401,6 +454,12 @@
     <string name="subscription_used">%s Used</string>
     <string name="subscription_traffic">%1$s Used / %2$s Remaining</string>
     <string name="subscription_expire">Expire: %s</string>
+    <string name="subscription_remaining_short">%1$s left</string>
+    <string name="subscription_updated_short">Updated %1$s</string>
+    <string name="subscription_expired_short">Expired</string>
+    <string name="subscription_expires_days_short">%1$d days left</string>
+    <string name="subscription_expires_date_short">Expires %1$s</string>
+    <string name="subscription_never_updated_short">Not updated</string>
     <string name="subscription_import">Import subscription</string>
     <string name="subscription_import_message">Confirm you want to import subscription %s? If you
         are coming from an untrusted source, doing this may result in your IP and this behavior

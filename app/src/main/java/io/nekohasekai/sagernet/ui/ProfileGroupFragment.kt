@@ -39,6 +39,7 @@ import io.nekohasekai.sagernet.ui.profile.TrojanSettingsActivity
 import io.nekohasekai.sagernet.ui.profile.TuicSettingsActivity
 import io.nekohasekai.sagernet.ui.profile.VMessSettingsActivity
 import io.nekohasekai.sagernet.ui.profile.WireGuardSettingsActivity
+import io.nekohasekai.sagernet.utils.AutoRegionManager
 import io.nekohasekai.sagernet.widget.QRCodeDialog
 import io.nekohasekai.sagernet.widget.UndoSnackbarManager
 import kotlinx.coroutines.sync.Mutex
@@ -74,7 +75,7 @@ import androidx.core.view.size
         }
 
         lateinit var undoManager: UndoSnackbarManager<ProxyEntity>
-        var adapter: ConfigurationAdapter? = null
+        var adapter: ProfileConfigurationAdapter? = null
 
         override fun onSaveInstanceState(outState: Bundle) {
             super.onSaveInstanceState(outState)
@@ -94,7 +95,7 @@ import androidx.core.view.size
             }
         }
 
-        private val isEnabled: Boolean
+        internal val isEnabled: Boolean
             get() {
                 return DataStore.serviceState.let { it.canStop || it == BaseService.State.Stopped }
             }
@@ -102,6 +103,8 @@ import androidx.core.view.size
         lateinit var layoutManager: LinearLayoutManager
         lateinit var configurationListView: RecyclerView
         var emptyView: View? = null
+
+        internal fun isUndoManagerInitialized() = ::undoManager.isInitialized
 
         val select by lazy {
             try {
@@ -189,11 +192,12 @@ import androidx.core.view.size
             layoutManager = FixedLinearLayoutManager(configurationListView)
             layoutManager.initialPrefetchItemCount = 6
             configurationListView.layoutManager = layoutManager
-            adapter = ConfigurationAdapter()
+            adapter = ProfileConfigurationAdapter(this)
             ProfileManager.addListener(adapter!!)
             GroupManager.addListener(adapter!!)
             configurationListView.adapter = adapter
             configurationListView.setItemViewCacheSize(20)
+            (parentFragment as? ConfigurationFragment)?.applyFiltersTo(this)
 
             if (!select) {
                 emptyView = view.findViewById(R.id.empty_view)
@@ -216,7 +220,11 @@ import androidx.core.view.size
                     override fun getDragDirs(
                         recyclerView: RecyclerView,
                         viewHolder: RecyclerView.ViewHolder,
-                    ) = if (isEnabled) super.getDragDirs(recyclerView, viewHolder) else 0
+                    ) = if (isEnabled && adapter?.isFiltering != true) {
+                        super.getDragDirs(recyclerView, viewHolder)
+                    } else {
+                        0
+                    }
 
                     override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                     }
@@ -251,290 +259,8 @@ import androidx.core.view.size
             }
 
             super.onDestroy()
-            if (::undoManager.isInitialized) return
+            if (!::undoManager.isInitialized) return
             undoManager.flush()
-        }
-
-        inner class ConfigurationAdapter : RecyclerView.Adapter<ConfigurationHolder>(),
-            ProfileManager.Listener,
-            GroupManager.Listener,
-            UndoSnackbarManager.Interface<ProxyEntity> {
-
-            init {
-                setHasStableIds(true)
-            }
-
-            var configurationIdList: MutableList<Long> = mutableListOf()
-            val configurationList = HashMap<Long, ProxyEntity>()
-
-            private fun getItem(profileId: Long): ProxyEntity {
-                var profile = configurationList[profileId]
-                if (profile == null) {
-                    profile = ProfileManager.getProfile(profileId)
-                    if (profile != null) {
-                        configurationList[profileId] = profile
-                    }
-                }
-                return profile!!
-            }
-
-            private fun getItemAt(index: Int) = getItem(configurationIdList[index])
-
-            override fun onCreateViewHolder(
-                parent: ViewGroup,
-                viewType: Int,
-            ): ConfigurationHolder {
-                return ConfigurationHolder(
-                    LayoutInflater.from(parent.context)
-                        .inflate(R.layout.layout_profile, parent, false),
-                    this@ProfileGroupFragment
-                )
-            }
-
-            override fun getItemId(position: Int): Long {
-                return configurationIdList[position]
-            }
-
-            override fun onBindViewHolder(holder: ConfigurationHolder, position: Int) {
-                try {
-                    holder.bind(getItemAt(position))
-                } catch (ignored: NullPointerException) { // when group deleted
-                }
-            }
-
-            override fun onBindViewHolder(
-                holder: ConfigurationHolder,
-                position: Int,
-                payloads: MutableList<Any>
-            ) {
-                if (payloads.isEmpty()) {
-                    onBindViewHolder(holder, position)
-                } else {
-                    try {
-                        val item = getItemAt(position)
-                        for (payload in payloads) {
-                            when (payload) {
-                                ConfigurationPayload.LATENCY -> holder.updateStatus(item)
-                                ConfigurationPayload.TRAFFIC -> holder.updateTraffic(item)
-                                ConfigurationPayload.SELECTED -> holder.updateSelected(item)
-                                else -> holder.bind(item)
-                            }
-                        }
-                    } catch (ignored: Exception) {
-                    }
-                }
-            }
-
-            override fun getItemCount(): Int {
-                return configurationIdList.size
-            }
-
-            private val updated = HashSet<ProxyEntity>()
-
-            fun filter(name: String) {
-                if (name.isEmpty()) {
-                    reloadProfiles()
-                    return
-                }
-                val lower = name.lowercase()
-                val newIds = configurationList.filter {
-                    it.value.displayName().lowercase().contains(lower) ||
-                            it.value.displayType().lowercase().contains(lower) ||
-                            it.value.displayAddress().lowercase().contains(lower)
-                }.keys.toList()
-                val oldList = ArrayList(configurationIdList)
-                val diff = DiffUtil.calculateDiff(ProfileDiffCallback(oldList, newIds))
-                configurationIdList.clear()
-                configurationIdList.addAll(newIds)
-                diff.dispatchUpdatesTo(this)
-                updateEmptyView()
-            }
-
-            fun move(from: Int, to: Int) {
-                val first = getItemAt(from)
-                var previousOrder = first.userOrder
-                val (step, range) = if (from < to) Pair(1, from until to) else Pair(
-                    -1, to + 1 downTo from
-                )
-                for (i in range) {
-                    val next = getItemAt(i + step)
-                    val order = next.userOrder
-                    next.userOrder = previousOrder
-                    previousOrder = order
-                    configurationIdList[i] = next.id
-                    updated.add(next)
-                }
-                first.userOrder = previousOrder
-                configurationIdList[to] = first.id
-                updated.add(first)
-                notifyItemMoved(from, to)
-            }
-
-            fun commitMove() = runOnDefaultDispatcher {
-                updated.forEach { SagerDatabase.proxyDao.updateProxy(it) }
-                updated.clear()
-            }
-
-            fun remove(pos: Int) {
-                if (pos < 0) return
-                configurationIdList.removeAt(pos)
-                notifyItemRemoved(pos)
-            }
-
-            override fun undo(actions: List<Pair<Int, ProxyEntity>>) {
-                for ((index, item) in actions) {
-                    configurationListView.post {
-                        configurationList[item.id] = item
-                        configurationIdList.add(index, item.id)
-                        notifyItemInserted(index)
-                    }
-                }
-            }
-
-            override fun commit(actions: List<Pair<Int, ProxyEntity>>) {
-                val profiles = actions.map { it.second }
-                runOnDefaultDispatcher {
-                    for (entity in profiles) {
-                        ProfileManager.deleteProfile(entity.groupId, entity.id)
-                    }
-                }
-            }
-
-            override suspend fun onAdd(profile: ProxyEntity) {
-                if (profile.groupId != proxyGroup.id) return
-
-                configurationListView.post {
-                    if (::undoManager.isInitialized) {
-                        undoManager.flush()
-                    }
-                    val pos = itemCount
-                    configurationList[profile.id] = profile
-                    configurationIdList.add(profile.id)
-                    notifyItemInserted(pos)
-                }
-            }
-
-            override suspend fun onUpdated(profile: ProxyEntity, noTraffic: Boolean) {
-                if (profile.groupId != proxyGroup.id) return
-                val index = configurationIdList.indexOf(profile.id)
-                if (index < 0) return
-                configurationListView.post {
-                    if (::undoManager.isInitialized) {
-                        undoManager.flush()
-                    }
-                    configurationList[profile.id] = profile
-                    // 刷新延迟 + 选中态（切换选中时旧节点需取消高亮）
-                    notifyItemChanged(
-                        index, listOf(
-                            ConfigurationPayload.LATENCY,
-                            ConfigurationPayload.SELECTED
-                        )
-                    )
-                    //
-                    val oldProfile = configurationList[profile.id]
-                    if (noTraffic && oldProfile != null) {
-                        runOnDefaultDispatcher {
-                            onUpdated(
-                                TrafficData(
-                                    id = profile.id,
-                                    rx = oldProfile.rx,
-                                    tx = oldProfile.tx
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
-            override suspend fun onUpdated(data: TrafficData) {
-                try {
-                    val index = configurationIdList.indexOf(data.id)
-                    if (index != -1) {
-                        configurationListView.post {
-                            notifyItemChanged(index, ConfigurationPayload.TRAFFIC)
-                        }
-                    }
-                } catch (e: Exception) {
-                    Logs.w(e)
-                }
-            }
-
-            override suspend fun onRemoved(groupId: Long, profileId: Long) {
-                if (groupId != proxyGroup.id) return
-                val index = configurationIdList.indexOf(profileId)
-                if (index < 0) return
-
-                configurationListView.post {
-                    configurationIdList.removeAt(index)
-                    configurationList.remove(profileId)
-                    notifyItemRemoved(index)
-                }
-            }
-
-            override suspend fun groupAdd(group: ProxyGroup) = Unit
-            override suspend fun groupRemoved(groupId: Long) = Unit
-
-            override suspend fun groupUpdated(group: ProxyGroup) {
-                if (group.id != proxyGroup.id) return
-                proxyGroup = group
-                reloadProfiles()
-            }
-
-            override suspend fun groupUpdated(groupId: Long) {
-                if (groupId != proxyGroup.id) return
-                proxyGroup = SagerDatabase.groupDao.getById(groupId)!!
-                reloadProfiles()
-            }
-
-            fun reloadProfiles() {
-                var newProfiles = SagerDatabase.proxyDao.getByGroup(proxyGroup.id)
-                when (proxyGroup.order) {
-                    GroupOrder.BY_NAME -> {
-                        newProfiles = newProfiles.sortedBy { it.displayName() }
-
-                    }
-
-                    GroupOrder.BY_DELAY -> {
-                        newProfiles =
-                            newProfiles.sortedBy { if (it.status == 1) it.ping else 114514 }
-                    }
-                }
-
-                configurationList.clear()
-                configurationList.putAll(newProfiles.associateBy { it.id })
-                val newProfileIds = newProfiles.map { it.id }
-
-                var selectedProfileIndex = -1
-
-                if (selected) {
-                    val selectedProxy = selectedItem?.id ?: DataStore.selectedProxy
-                    selectedProfileIndex = newProfileIds.indexOf(selectedProxy)
-                }
-
-                configurationListView.post {
-                    val oldList = ArrayList(configurationIdList)
-                    val diff = DiffUtil.calculateDiff(ProfileDiffCallback(oldList, newProfileIds))
-                    configurationIdList.clear()
-                    configurationIdList.addAll(newProfileIds)
-                    diff.dispatchUpdatesTo(this)
-                    updateEmptyView()
-
-                    if (selectedProfileIndex != -1) {
-                        configurationListView.scrollTo(selectedProfileIndex, true)
-                    } else if (newProfiles.isNotEmpty()) {
-                        configurationListView.scrollTo(0, true)
-                    }
-
-                }
-            }
-
-            fun updateEmptyView() {
-                val emptyView = emptyView ?: return
-                val isEmpty = configurationIdList.isEmpty()
-                emptyView.visibility = if (isEmpty) View.VISIBLE else View.GONE
-                configurationListView.visibility = if (isEmpty) View.GONE else View.VISIBLE
-            }
-
         }
 
         val profileAccess = Mutex()
@@ -556,4 +282,5 @@ object ConfigurationPayload {
     const val LATENCY = 1
     const val TRAFFIC = 2
     const val SELECTED = 3
+    const val FAVORITE = 4
 }

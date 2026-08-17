@@ -59,6 +59,11 @@
         \n直连： %3$s↑ %4$s↓</string>
     <string name="speed">%s/s</string>
     <string name="connection_test_testing">测试中…</string>
+    <string name="test_result_expired">过期</string>
+    <string name="test_result_just_now">刚刚</string>
+    <string name="test_result_minutes_short">%1$d分</string>
+    <string name="test_result_hours_short">%1$d时</string>
+    <string name="test_result_days_short">%1$d天</string>
     <string name="connection_test_available">连接成功: HTTPS 握手耗时 %dms</string>
     <string name="connection_test_error">失败: %s</string>
     <string name="connection_test_fail">网络不可用</string>
@@ -111,6 +116,9 @@
     <string name="stop">停止</string>
     <string name="stopping">正在停止…</string>
     <string name="vpn_error">%s</string>
+    <string name="connection_error_title">连接错误</string>
+    <string name="connection_error_inline">错误 · %1$s</string>
+    <string name="connection_error_tap_details">%1$s · 点击查看详情</string>
     <string name="vpn_permission_denied">VPN 服务权限请求被拒绝</string>
     <string name="reboot_required">无法启动 VPN 服务 , 您可能需要重启您的设备.</string>
     <!-- alert category -->
@@ -121,6 +129,11 @@
     <string name="settings">设置</string>
     <string name="edit">编辑</string>
     <string name="share">分享</string>
+    <string name="more_actions">更多操作</string>
+    <string name="add_favorite">添加到收藏</string>
+    <string name="remove_favorite">取消收藏</string>
+    <string name="favorite_added">已添加到收藏</string>
+    <string name="favorite_removed">已取消收藏</string>
     <string name="add_profile">添加服务器配置</string>
     <string name="action_create_group">空白组</string>
     <string name="action_from_link">添加订阅</string>
@@ -274,6 +287,38 @@
     <string name="profile_empty_add_hint">还没有任何服务器。请先添加或导入一个服务器。</string>
     <string name="profile_empty_title">这里还没有服务器</string>
     <string name="profile_empty_subtitle">添加或导入一个服务器即可开始使用。</string>
+    <string name="profile_filter_empty_title">没有匹配的服务器</string>
+    <string name="profile_filter_empty_subtitle">请切换筛选，或先运行一次连接测试。</string>
+    <string name="filter_favorites">收藏</string>
+    <string name="filter_recent">最近</string>
+    <string name="filter_fast">延迟</string>
+    <string name="filter_count_format">%1$s %2$d</string>
+    <string name="jump_to_current_profile">回到当前节点</string>
+    <string name="current_profile_unavailable">当前没有可定位的节点</string>
+    <string name="batch_operations">批量操作</string>
+    <string name="select_all">全选</string>
+    <string name="batch_no_profiles">当前没有可选择的节点</string>
+    <string name="batch_add_favorite">加入收藏</string>
+    <string name="batch_remove_favorite">取消收藏</string>
+    <string name="batch_favorite_added">已将所选节点加入收藏</string>
+    <string name="batch_favorite_removed">已取消所选节点的收藏</string>
+    <string name="batch_test">测试延迟</string>
+    <string name="batch_delete_title">删除所选节点？</string>
+    <string name="batch_delete_active_profile">请先断开连接，再删除当前运行节点</string>
+    <string name="connection_test_already_running">已有延迟测试正在进行</string>
+    <plurals name="batch_selected">
+        <item quantity="other">已选 %d 项</item>
+    </plurals>
+    <plurals name="batch_delete_message">
+        <item quantity="other">删除 %d 个节点？此操作可以撤销。</item>
+    </plurals>
+    <string name="exit_location_loading">正在查询出口…</string>
+    <string name="exit_location_format">出口 %1$s</string>
+    <string name="exit_location_content_description">当前出口 %1$s</string>
+    <string name="exit_location_interaction_hint">点击复制 · 长按刷新</string>
+    <string name="exit_location_copied">出口信息已复制</string>
+    <string name="exit_location_refreshing">正在刷新出口信息…</string>
+    <string name="vpn_connected_short">已连接</string>
     <string name="route_rules_provider">路由资源更新源</string>
     <string name="route_assets">资源</string>
     <string name="route_manage_assets">管理路由资源</string>
@@ -452,6 +497,12 @@
     <string name="acquire_wake_lock_summary">保持 CPU 开启</string>
     <string name="move">移动</string>
     <string name="subscription_expire">过期: %s</string>
+    <string name="subscription_remaining_short">剩 %1$s</string>
+    <string name="subscription_updated_short">更新 %1$s</string>
+    <string name="subscription_expired_short">已过期</string>
+    <string name="subscription_expires_days_short">%1$d 天到期</string>
+    <string name="subscription_expires_date_short">到期 %1$s</string>
+    <string name="subscription_never_updated_short">尚未更新</string>
     <string name="update_all_subscription">更新所有订阅</string>
     <string name="exe_prefer_provider">首选插件提供者</string>
     <string name="create_shortcut">创建快捷方式</string>

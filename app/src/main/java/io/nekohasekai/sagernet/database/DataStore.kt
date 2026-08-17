@@ -34,6 +34,10 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var currentProfile by configurationStore.long(Key.PROFILE_CURRENT)
 
     var selectedProxy by configurationStore.long(Key.PROFILE_ID)
+    var profileListFilter by configurationStore.string(Key.PROFILE_LIST_FILTER) { "all" }
+    var favoriteProfiles by configurationStore.string(Key.PROFILE_FAVORITES) { "" }
+    var recentProfiles by configurationStore.string(Key.PROFILE_RECENT) { "" }
+    var profileTestTimes by configurationStore.string(Key.PROFILE_TEST_TIMES) { "" }
     var selectedGroup by configurationStore.long(Key.PROFILE_GROUP) { currentGroupId() } // "ungrouped" group id = 1
 
     // only in bg process

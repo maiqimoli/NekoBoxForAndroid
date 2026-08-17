@@ -2,4 +2,24 @@
 <resources>
     <color name="fab_color_progress">@color/material_light_white</color>
     <color name="preference_simple_menu_background">#303030</color>
+
+    <color name="cyber_background">#0B0E14</color>
+    <color name="cyber_surface">#131822</color>
+    <color name="cyber_surface_elevated">#18202C</color>
+    <color name="cyber_surface_selected">#102820</color>
+    <color name="cyber_stroke">#354154</color>
+    <color name="cyber_stroke_soft">#80455266</color>
+    <color name="cyber_text_primary">#F4F7FB</color>
+    <color name="cyber_text_secondary">#9AA7B8</color>
+    <color name="cyber_cyan_text">#00E5FF</color>
+    <color name="cyber_emerald_text">#00E599</color>
+    <color name="cyber_amber_text">#FFB300</color>
+    <color name="cyber_coral_text">#FF6868</color>
+    <color name="cyber_protocol_blue">#64B5F6</color>
+    <color name="cyber_protocol_green">#81C784</color>
+    <color name="cyber_protocol_cyan">#4DD0E1</color>
+    <color name="cyber_protocol_orange">#FFB74D</color>
+    <color name="cyber_protocol_coral">#FF8A65</color>
+    <color name="cyber_protocol_purple">#BA68C8</color>
+    <color name="cyber_protocol_teal">#4DB6AC</color>
 </resources>

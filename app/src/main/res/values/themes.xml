@@ -132,6 +132,28 @@
         <item name="rippleColor">@color/chip_ripple_color</item>
     </style>
 
+    <style name="ShapeAppearanceOverlay.SagerNet.CyberDock" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">20dp</item>
+    </style>
+
+    <style name="Widget.SagerNet.CyberFilterChip" parent="Widget.MaterialComponents.Chip.Choice">
+        <item name="android:textColor">@color/cyber_filter_chip_text</item>
+        <item name="android:textSize">12sp</item>
+        <item name="checkedIconVisible">false</item>
+        <item name="chipBackgroundColor">@color/cyber_filter_chip_background</item>
+        <item name="chipCornerRadius">17dp</item>
+        <item name="chipMinHeight">34dp</item>
+        <item name="chipStartPadding">0dp</item>
+        <item name="chipEndPadding">0dp</item>
+        <item name="textStartPadding">8dp</item>
+        <item name="textEndPadding">8dp</item>
+        <item name="chipStrokeColor">@color/cyber_filter_chip_stroke</item>
+        <item name="chipStrokeWidth">1dp</item>
+        <item name="ensureMinTouchTargetSize">false</item>
+        <item name="rippleColor">@color/cyber_stroke_soft</item>
+    </style>
+
     <style name="Theme.SagerNet.Pink_SSR">
         <item name="colorPrimary">@color/color_pink_ssr</item>
         <item name="colorPrimaryDark">@color/color_pink_ssr</item>

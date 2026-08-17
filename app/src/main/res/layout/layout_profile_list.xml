@@ -3,22 +3,23 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/cyber_background">
 
     <com.simplecityapps.recyclerview_fastscroll.views.FastScrollRecyclerView
         android:id="@+id/configuration_list"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipChildren="false"
-        android:clipToPadding="false"
+        android:clipToPadding="true"
         android:paddingStart="4dp"
         android:paddingTop="6dp"
         android:paddingEnd="4dp"
         android:paddingBottom="@dimen/main_list_padding_bottom"
         android:scrollbarSize="0dp"
         app:fastScrollAutoHide="true"
-        app:fastScrollThumbColor="?colorPrimary"
-        app:fastScrollThumbInactiveColor="?colorPrimary"
+        app:fastScrollThumbColor="@color/cyber_cyan_text"
+        app:fastScrollThumbInactiveColor="@color/cyber_stroke"
         tools:listitem="@layout/layout_profile" />
 
     <LinearLayout
@@ -37,19 +38,21 @@
             android:layout_marginBottom="16dp"
             android:alpha="0.4"
             app:srcCompat="@drawable/ic_file_cloud_queue"
-            app:tint="?android:attr/textColorSecondary" />
+            app:tint="@color/cyber_text_secondary" />
 
         <TextView
+            android:id="@+id/empty_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="@string/profile_empty_title"
             android:textAppearance="?android:attr/textAppearanceMedium"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/cyber_text_primary"
             android:textSize="17sp"
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/empty_subtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
@@ -57,7 +60,7 @@
             android:lineSpacingExtra="2dp"
             android:text="@string/profile_empty_subtitle"
             android:textAppearance="?android:attr/textAppearanceSmall"
-            android:textColor="?android:attr/textColorSecondary"
+            android:textColor="@color/cyber_text_secondary"
             android:textSize="13sp" />
 
         <com.google.android.material.button.MaterialButton
@@ -65,9 +68,15 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
+            android:backgroundTint="@color/cyber_surface"
+            android:text="@string/add_profile"
+            android:textColor="@color/cyber_cyan_text"
             app:cornerRadius="20dp"
             app:icon="@drawable/ic_action_note_add"
-            android:text="@string/add_profile" />
+            app:iconTint="@color/cyber_cyan_text"
+            app:rippleColor="@color/cyber_stroke_soft"
+            app:strokeColor="@color/cyber_cyan_text"
+            app:strokeWidth="1dp" />
 
     </LinearLayout>
 

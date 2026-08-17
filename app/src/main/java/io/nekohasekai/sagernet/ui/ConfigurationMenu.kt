@@ -41,6 +41,7 @@ import moe.matsuri.nb4a.Protocols
             getString(R.string.add_profile_methods_scan_qr_code),
             getString(R.string.action_import),
             getString(R.string.action_import_file),
+            getString(R.string.proxy_chain),
             getString(R.string.add_profile_methods_manual_settings)
         )
         MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.add_profile)
@@ -49,7 +50,8 @@ import moe.matsuri.nb4a.Protocols
                     0 -> startActivity(Intent(context, ScannerActivity::class.java))
                     1 -> handleMenuAction(R.id.action_import_clipboard)
                     2 -> startFilesForResult(importFile, "*/*")
-                    3 -> showManualAddMenu()
+                    3 -> handleMenuAction(R.id.action_new_chain)
+                    4 -> showManualAddMenu()
                 }
             }
             .show()
@@ -72,15 +74,14 @@ import moe.matsuri.nb4a.Protocols
             getString(R.string.action_anytls),
             getString(R.string.action_ssh),
             getString(R.string.action_wireguard),
-            getString(R.string.custom_config),
-            getString(R.string.proxy_chain)
+            getString(R.string.custom_config)
         )
         val ids = intArrayOf(
             R.id.action_new_socks, R.id.action_new_http, R.id.action_new_ss, R.id.action_new_vmess,
             R.id.action_new_vless, R.id.action_new_trojan, R.id.action_new_trojan_go,
             R.id.action_new_mieru, R.id.action_new_naive, R.id.action_new_hysteria,
             R.id.action_new_tuic, R.id.action_new_shadowtls, R.id.action_new_anytls,
-            R.id.action_new_ssh, R.id.action_new_wg, R.id.action_new_config, R.id.action_new_chain
+            R.id.action_new_ssh, R.id.action_new_wg, R.id.action_new_config
         )
         MaterialAlertDialogBuilder(requireContext()).setTitle(
             R.string.add_profile_methods_manual_settings
@@ -97,6 +98,10 @@ import moe.matsuri.nb4a.Protocols
 
     private fun ConfigurationFragment.handleMenuAction(itemId: Int): Boolean {
         when (itemId) {
+            R.id.action_jump_current -> focusCurrentProfile()
+
+            R.id.action_batch_select -> beginBatchSelection()
+
             R.id.action_scan_qr_code -> {
                 startActivity(Intent(context, ScannerActivity::class.java))
             }
@@ -239,6 +244,7 @@ import moe.matsuri.nb4a.Protocols
                         }
                     }
                     if (toClear.isNotEmpty()) {
+                        ProfileUiState.clearTested(toClear.map { it.id })
                         ProfileManager.updateProfile(toClear)
                     }
                 }
@@ -345,4 +351,3 @@ import moe.matsuri.nb4a.Protocols
         }
         return true
     }
-

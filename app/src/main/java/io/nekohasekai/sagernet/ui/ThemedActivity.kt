@@ -10,10 +10,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.snackbar.Snackbar
 import io.nekohasekai.sagernet.R
+import io.nekohasekai.sagernet.ktx.getColour
 import io.nekohasekai.sagernet.utils.LocaleUtils
 import io.nekohasekai.sagernet.utils.Theme
 
@@ -40,6 +42,16 @@ abstract class ThemedActivity : AppCompatActivity {
         super.onCreate(savedInstanceState)
 
         uiMode = resources.configuration.uiMode
+
+        @Suppress("DEPRECATION")
+        window.statusBarColor = getColour(R.color.cyber_background)
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = getColour(R.color.cyber_background)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            val lightBars = !Theme.usingNightMode()
+            isAppearanceLightStatusBars = lightBars
+            isAppearanceLightNavigationBars = lightBars
+        }
 
         ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())

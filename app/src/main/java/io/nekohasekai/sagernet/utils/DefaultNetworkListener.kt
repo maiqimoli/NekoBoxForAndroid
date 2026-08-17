@@ -13,37 +13,49 @@ import android.os.Looper
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.ktx.Logs
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ObsoleteCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.actor
-import kotlinx.coroutines.runBlocking
 import java.net.UnknownHostException
 
 object DefaultNetworkListener {
     private sealed class NetworkMessage {
-        class Start(val key: Any, val listener: (Network?) -> Unit) : NetworkMessage()
+        class Start(val key: Any, val listener: (Network?) -> Unit) : NetworkMessage() {
+            val completed = CompletableDeferred<Unit>()
+        }
         class Get : NetworkMessage() {
             val response = CompletableDeferred<Network>()
         }
 
-        class Stop(val key: Any) : NetworkMessage()
+        class Stop(val key: Any) : NetworkMessage() {
+            val completed = CompletableDeferred<Unit>()
+        }
 
         class Put(val network: Network) : NetworkMessage()
         class Update(val network: Network) : NetworkMessage()
         class Lost(val network: Network) : NetworkMessage()
     }
 
-    private val networkActor = GlobalScope.actor<NetworkMessage>(Dispatchers.Unconfined) {
+    private val listenerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val networkActor = listenerScope.actor<NetworkMessage>(capacity = Channel.UNLIMITED) {
         val listeners = mutableMapOf<Any, (Network?) -> Unit>()
         var network: Network? = null
         val pendingRequests = arrayListOf<NetworkMessage.Get>()
         for (message in channel) when (message) {
             is NetworkMessage.Start -> {
-                if (listeners.isEmpty()) register()
-                listeners[message.key] = message.listener
-                if (network != null) message.listener(network)
+                try {
+                    if (listeners.isEmpty()) register()
+                    listeners[message.key] = message.listener
+                    if (network != null) runCatching {
+                        message.listener(network)
+                    }.onFailure { Logs.w(it) }
+                } finally {
+                    message.completed.complete(Unit)
+                }
             }
             is NetworkMessage.Get -> {
                 check(listeners.isNotEmpty()) { "Getting network without any listeners is not supported" }
@@ -51,33 +63,50 @@ object DefaultNetworkListener {
                     network
                 )
             }
-            is NetworkMessage.Stop -> if (listeners.isNotEmpty() && // was not empty
-                listeners.remove(message.key) != null && listeners.isEmpty()
-            ) {
-                network = null
-                unregister()
+            is NetworkMessage.Stop -> {
+                try {
+                    val removed = listeners.remove(message.key)
+                    if (removed != null && listeners.isEmpty()) {
+                        network = null
+                        unregister()
+                        pendingRequests.forEach {
+                            it.response.completeExceptionally(
+                                UnknownHostException("Default network listener stopped")
+                            )
+                        }
+                        pendingRequests.clear()
+                        runCatching { removed(null) }.onFailure { Logs.w(it) }
+                    }
+                } finally {
+                    message.completed.complete(Unit)
+                }
             }
 
             is NetworkMessage.Put -> {
                 network = message.network
                 pendingRequests.forEach { it.response.complete(message.network) }
                 pendingRequests.clear()
-                listeners.values.forEach { it(network) }
+                listeners.values.forEach { listener ->
+                    runCatching { listener(network) }.onFailure { Logs.w(it) }
+                }
             }
-            is NetworkMessage.Update -> if (network == message.network) listeners.values.forEach {
-                it(
-                    network
-                )
+            is NetworkMessage.Update -> if (network == message.network) listeners.values.forEach { listener ->
+                runCatching { listener(network) }.onFailure { Logs.w(it) }
             }
             is NetworkMessage.Lost -> if (network == message.network) {
                 network = null
-                listeners.values.forEach { it(null) }
+                listeners.values.forEach { listener ->
+                    runCatching { listener(null) }.onFailure { Logs.w(it) }
+                }
             }
         }
     }
 
-    suspend fun start(key: Any, listener: (Network?) -> Unit) =
-        networkActor.send(NetworkMessage.Start(key, listener))
+    suspend fun start(key: Any, listener: (Network?) -> Unit) {
+        val message = NetworkMessage.Start(key, listener)
+        networkActor.send(message)
+        message.completed.await()
+    }
 
     suspend fun get() = if (fallback) {
         SagerNet.connectivity.activeNetwork
@@ -87,24 +116,32 @@ object DefaultNetworkListener {
         response.await()
     }
 
-    suspend fun stop(key: Any) = networkActor.send(NetworkMessage.Stop(key))
+    suspend fun stop(key: Any) {
+        val message = NetworkMessage.Stop(key)
+        networkActor.send(message)
+        message.completed.await()
+    }
 
     // NB: this runs in ConnectivityThread, and this behavior cannot be changed until API 26
     private object Callback : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) =
-            runBlocking { networkActor.send(NetworkMessage.Put(network)) }
+        override fun onAvailable(network: Network) = send(NetworkMessage.Put(network))
 
         override fun onCapabilitiesChanged(
             network: Network, networkCapabilities: NetworkCapabilities
-        ) { // it's a good idea to refresh capabilities
-            runBlocking { networkActor.send(NetworkMessage.Update(network)) }
-        }
+        ) = send(NetworkMessage.Update(network))
 
-        override fun onLost(network: Network) =
-            runBlocking { networkActor.send(NetworkMessage.Lost(network)) }
+        override fun onLost(network: Network) = send(NetworkMessage.Lost(network))
+
+        private fun send(message: NetworkMessage) {
+            if (networkActor.trySend(message).isFailure) {
+                Logs.w("Default network event dropped: ${message.javaClass.simpleName}")
+            }
+        }
     }
 
+    @Volatile
     private var fallback = false
+    private var registered = false
     private val request = NetworkRequest.Builder().apply {
         addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
         addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
@@ -148,11 +185,19 @@ object DefaultNetworkListener {
                     // known bug on API 23: https://stackoverflow.com/a/33509180/2245107
                 }
             }
+            registered = true
         } catch (e: Exception) {
             Logs.w(e)
             fallback = true
+            registered = false
         }
     }
 
-    private fun unregister() = SagerNet.connectivity.unregisterNetworkCallback(Callback)
+    private fun unregister() {
+        if (!registered) return
+        registered = false
+        runCatching {
+            SagerNet.connectivity.unregisterNetworkCallback(Callback)
+        }.onFailure(Logs::w)
+    }
 }
