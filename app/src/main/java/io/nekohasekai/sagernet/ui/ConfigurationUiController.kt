@@ -20,7 +20,6 @@ class ConfigurationUiController(private val owner: ConfigurationFragment) {
     private var profileQuery = ""
     private var profileFilter = ProfileFilter.fromKey(DataStore.profileListFilter)
     private var pendingScrollProfileId: Long? = null
-    private var groupTabAlignAction: Runnable? = null
 
     fun onQueryTextChange(query: String): Boolean {
         if (query != profileQuery) owner.exitBatchSelection()
@@ -175,26 +174,23 @@ class ConfigurationUiController(private val owner: ConfigurationFragment) {
                 params.width = tabWidth
                 tabView.layoutParams = params
             }
+            syncGroupTabWindow(owner.groupPager.currentItem, 0F)
         }
     }
 
-    fun alignGroupTabWindow(selectedPosition: Int) {
-        groupTabAlignAction?.let(owner.tabLayout::removeCallbacks)
-        val action = Runnable {
-            val tabCount = owner.tabLayout.tabCount
-            if (tabCount <= 1) return@Runnable
-            val firstVisiblePosition = selectedPosition.coerceIn(0, tabCount - 2)
-            val firstVisibleTab = owner.tabLayout.getTabAt(firstVisiblePosition) ?: return@Runnable
-            owner.tabLayout.scrollTo(
-                (firstVisibleTab.view.left - owner.tabLayout.paddingStart).coerceAtLeast(0),
-                0,
-            )
-        }
-        groupTabAlignAction = action
-        owner.tabLayout.postDelayed(action, GROUP_TAB_ALIGNMENT_DELAY_MS)
-    }
+    fun syncGroupTabWindow(position: Int, positionOffset: Float) {
+        val tabCount = owner.tabLayout.tabCount
+        if (tabCount <= 2 || owner.tabLayout.width <= 0) return
 
-    private companion object {
-        const val GROUP_TAB_ALIGNMENT_DELAY_MS = 350L
+        val currentTab = owner.tabLayout.getTabAt(position)?.view ?: return
+        val nextTab = owner.tabLayout.getTabAt(position + 1)?.view
+        val nextLeft = nextTab?.left ?: currentTab.left
+        val interpolatedLeft = currentTab.left +
+            ((nextLeft - currentTab.left) * positionOffset).toInt()
+        val lastWindowStart = owner.tabLayout.getTabAt(tabCount - 2)?.view?.left ?: return
+        owner.tabLayout.scrollTo(
+            interpolatedLeft.coerceIn(0, lastWindowStart),
+            0,
+        )
     }
 }

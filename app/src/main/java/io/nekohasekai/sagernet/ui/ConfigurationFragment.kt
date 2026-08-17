@@ -215,9 +215,7 @@ class ConfigurationFragment @JvmOverloads constructor(
         override fun onPageScrolled(
             position: Int, positionOffset: Float, positionOffsetPixels: Int
         ) {
-            if (adapter.groupList.size > position) {
-                DataStore.selectedGroup = adapter.groupList[position].id
-            }
+            uiController.syncGroupTabWindow(position, positionOffset)
         }
 
         override fun onPageSelected(position: Int) {
@@ -225,7 +223,7 @@ class ConfigurationFragment @JvmOverloads constructor(
             if (adapter.groupList.size > position) {
                 DataStore.selectedGroup = adapter.groupList[position].id
             }
-            uiController.alignGroupTabWindow(position)
+            uiController.syncGroupTabWindow(position, 0F)
             groupPager.post {
                 getCurrentProfileGroupFragment()?.let(::applyFiltersTo)
             }
@@ -303,6 +301,10 @@ class ConfigurationFragment @JvmOverloads constructor(
                 true
             }
         }.attach()
+        if (!select) {
+            groupPager.unregisterOnPageChangeCallback(updateSelectedCallback)
+            groupPager.registerOnPageChangeCallback(updateSelectedCallback)
+        }
 
         toolbar.setOnClickListener {
             val fragment = getCurrentProfileGroupFragment()
