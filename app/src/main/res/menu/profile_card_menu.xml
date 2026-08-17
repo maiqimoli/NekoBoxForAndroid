@@ -5,6 +5,11 @@
         android:icon="@drawable/ic_star_outline_24"
         android:title="@string/add_favorite" />
     <item
+        android:id="@+id/action_remove_recent"
+        android:icon="@drawable/baseline_delete_sweep_24"
+        android:title="@string/remove_from_recent"
+        android:visible="false" />
+    <item
         android:id="@+id/action_edit_profile"
         android:icon="@drawable/ic_image_edit"
         android:title="@string/edit" />

@@ -125,6 +125,13 @@
     <string name="filter_all">All</string>
     <string name="filter_favorites">Favorites</string>
     <string name="filter_recent">Recent</string>
+    <string name="remove_from_recent">Remove from recent</string>
+    <string name="clear_recent_records">Clear recent history</string>
+    <string name="clear_recent_records_confirm">Clear all recent history? Server profiles will be kept.</string>
+    <string name="recent_record_removed">Removed from recent history</string>
+    <string name="recent_records_cleared">Recent history cleared</string>
+    <string name="recent_records_empty_title">No recent history</string>
+    <string name="recent_records_empty_subtitle">Select a server and it will appear here again.</string>
     <string name="filter_fast">Fast</string>
     <string name="filter_hk">HK</string>
     <string name="filter_us">US</string>

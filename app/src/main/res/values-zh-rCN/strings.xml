@@ -291,6 +291,13 @@
     <string name="profile_filter_empty_subtitle">请切换筛选，或先运行一次连接测试。</string>
     <string name="filter_favorites">收藏</string>
     <string name="filter_recent">最近</string>
+    <string name="remove_from_recent">从最近记录中移除</string>
+    <string name="clear_recent_records">清空最近记录</string>
+    <string name="clear_recent_records_confirm">确定清空全部最近记录吗？服务器节点会保留。</string>
+    <string name="recent_record_removed">已从最近记录中移除</string>
+    <string name="recent_records_cleared">最近记录已清空</string>
+    <string name="recent_records_empty_title">暂无最近记录</string>
+    <string name="recent_records_empty_subtitle">选择一个节点后，它会再次出现在这里。</string>
     <string name="filter_fast">延迟</string>
     <string name="filter_count_format">%1$s %2$d</string>
     <string name="jump_to_current_profile">回到当前节点</string>

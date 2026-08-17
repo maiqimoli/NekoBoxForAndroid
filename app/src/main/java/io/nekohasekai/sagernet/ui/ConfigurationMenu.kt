@@ -102,6 +102,8 @@ import moe.matsuri.nb4a.Protocols
 
             R.id.action_batch_select -> beginBatchSelection()
 
+            R.id.action_clear_recent -> clearRecentProfiles()
+
             R.id.action_scan_qr_code -> {
                 startActivity(Intent(context, ScannerActivity::class.java))
             }

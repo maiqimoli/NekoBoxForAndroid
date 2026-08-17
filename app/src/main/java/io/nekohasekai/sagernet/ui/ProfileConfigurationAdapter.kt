@@ -158,6 +158,8 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
 
     fun isFavorite(profileId: Long) = profileId in favoriteProfileIds
 
+    fun isRecent(profileId: Long) = profileId in recentProfileIds
+
     fun areAllFavorites(profileIds: Collection<Long>) =
         profileIds.isNotEmpty() && profileIds.all { it in favoriteProfileIds }
 
@@ -451,12 +453,17 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
         val isEmpty = configurationIdList.isEmpty()
         emptyView.visibility = if (isEmpty) View.VISIBLE else View.GONE
         owner.configurationListView.visibility = if (isEmpty) View.GONE else View.VISIBLE
-        emptyView.findViewById<TextView>(R.id.empty_title).setText(
-            if (isFiltering) R.string.profile_filter_empty_title else R.string.profile_empty_title
-        )
-        emptyView.findViewById<TextView>(R.id.empty_subtitle).setText(
-            if (isFiltering) R.string.profile_filter_empty_subtitle else R.string.profile_empty_subtitle
-        )
+        val recentEmpty = profileFilter == ProfileFilter.RECENT && searchQuery.isEmpty()
+        emptyView.findViewById<TextView>(R.id.empty_title).setText(when {
+            recentEmpty -> R.string.recent_records_empty_title
+            isFiltering -> R.string.profile_filter_empty_title
+            else -> R.string.profile_empty_title
+        })
+        emptyView.findViewById<TextView>(R.id.empty_subtitle).setText(when {
+            recentEmpty -> R.string.recent_records_empty_subtitle
+            isFiltering -> R.string.profile_filter_empty_subtitle
+            else -> R.string.profile_empty_subtitle
+        })
         emptyView.findViewById<View>(R.id.empty_add_button).isVisible = !isFiltering
     }
 

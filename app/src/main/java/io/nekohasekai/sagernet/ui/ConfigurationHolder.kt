@@ -229,7 +229,7 @@ import moe.matsuri.nb4a.Protocols.getProtocolColor
                                 ProfileUiState.markRecent(proxyEntity.id)
                                 onMainDispatcher {
                                     updateSelected(proxyEntity)
-                                    gf.adapter?.refreshUiState()
+                                    pf.refreshRecentUi()
                                 }
                             }
 
@@ -321,6 +321,8 @@ import moe.matsuri.nb4a.Protocols.getProtocolColor
                 favorite.setIcon(
                     if (isFavorite) R.drawable.ic_star_filled_24 else R.drawable.ic_star_outline_24
                 )
+                popup.menu.findItem(R.id.action_remove_recent).isVisible =
+                    gf.adapter?.isRecent(entity.id) == true
                 val serviceRunningForEntity = isServiceRunningForEntity()
                 popup.menu.findItem(R.id.action_edit_profile).isEnabled = !serviceRunningForEntity
                 popup.menu.findItem(R.id.action_delete_profile).isEnabled = !serviceRunningForEntity
@@ -375,6 +377,10 @@ import moe.matsuri.nb4a.Protocols.getProtocolColor
                             (gf.activity as? MainActivity)?.snackbar(
                                 if (favorite) R.string.favorite_added else R.string.favorite_removed
                             )?.show()
+                        }
+                        R.id.action_remove_recent -> {
+                            (gf.parentFragment as? ConfigurationFragment)
+                                ?.removeRecentProfile(entity.id)
                         }
                         R.id.action_edit_profile -> {
                             if (isServiceRunningForEntity()) return true

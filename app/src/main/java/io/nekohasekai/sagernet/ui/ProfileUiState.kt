@@ -83,6 +83,13 @@ object ProfileUiState {
 
     fun recentIds(): List<Long> = decodeIds(DataStore.recentProfiles)
 
+    internal fun normalizeRecentIds(profileIds: Collection<Long>): List<Long> = profileIds
+        .asSequence()
+        .filter { it > 0L }
+        .distinct()
+        .take(MAX_RECENT_PROFILES)
+        .toList()
+
     fun lastTestAt(profileId: Long): Long? = testRecord(profileId)?.timestampSeconds
 
     fun lastTestMethod(profileId: Long): ProfileTestMethod =
@@ -163,6 +170,28 @@ object ProfileUiState {
             addAll(decodeIds(DataStore.recentProfiles).filterNot { it == profileId })
         }.take(MAX_RECENT_PROFILES)
         DataStore.recentProfiles = encodeIds(recent)
+    }
+
+    @Synchronized
+    fun removeRecent(profileId: Long): Boolean {
+        if (profileId <= 0L) return false
+        val recent = decodeIds(DataStore.recentProfiles)
+        val updated = recent.filterNot { it == profileId }
+        if (updated.size == recent.size) return false
+        DataStore.recentProfiles = encodeIds(updated)
+        return true
+    }
+
+    @Synchronized
+    fun clearRecent(): List<Long> {
+        val recent = decodeIds(DataStore.recentProfiles)
+        DataStore.recentProfiles = ""
+        return recent
+    }
+
+    @Synchronized
+    fun restoreRecent(profileIds: Collection<Long>) {
+        DataStore.recentProfiles = encodeIds(normalizeRecentIds(profileIds))
     }
 
     @Synchronized

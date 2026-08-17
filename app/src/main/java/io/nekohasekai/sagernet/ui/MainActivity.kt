@@ -454,7 +454,7 @@ class MainActivity : ThemedActivity(),
         DataStore.currentProfile = id
         ProfileUiState.markRecent(id)
         (supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ConfigurationFragment)
-            ?.getCurrentProfileGroupFragment()?.adapter?.refreshUiState()
+            ?.refreshRecentUi()
         runOnDefaultDispatcher {
             ProfileManager.postUpdate(old, true)
             ProfileManager.postUpdate(id, true)

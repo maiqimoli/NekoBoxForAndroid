@@ -13,6 +13,15 @@ class ProfileUiStateTest {
     }
 
     @Test
+    fun normalizeRecentIdsKeepsOrderAndCapsHistory() {
+        val values = listOf(0L, -1L, 5L, 5L) + (1L..25L)
+        assertEquals(
+            listOf(5L, 1L, 2L, 3L, 4L) + (6L..20L),
+            ProfileUiState.normalizeRecentIds(values),
+        )
+    }
+
+    @Test
     fun unknownFilterFallsBackToAll() {
         assertEquals(ProfileFilter.ALL, ProfileFilter.fromKey("not-a-filter"))
         assertTrue(ProfileFilter.FAVORITES.key == "favorites")

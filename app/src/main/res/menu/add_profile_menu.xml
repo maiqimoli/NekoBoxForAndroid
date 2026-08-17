@@ -93,6 +93,10 @@
                 android:id="@+id/action_batch_select"
                 android:title="@string/batch_operations" />
             <item
+                android:id="@+id/action_clear_recent"
+                android:title="@string/clear_recent_records"
+                android:visible="false" />
+            <item
                 android:id="@+id/action_update_subscription"
                 android:title="@string/update_current_subscription" />
             <item
