@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.view.isGone
@@ -129,7 +130,7 @@ import moe.matsuri.nb4a.Protocols.getProtocolColor
                     profileStatus.setText(R.string.connection_test_testing)
                     profileStatus.setTextColor(view.context.getColour(R.color.cyber_cyan_text))
                     profileStatus.background = DrawableCompat.wrap(
-                        view.context.getDrawable(R.drawable.bg_latency_badge)!!.mutate()
+                        AppCompatResources.getDrawable(view.context, R.drawable.bg_latency_badge)!!.mutate()
                     ).apply {
                         DrawableCompat.setTint(this, view.context.getColour(R.color.color_cyber_badge_cyan_bg))
                     }
@@ -169,14 +170,14 @@ import moe.matsuri.nb4a.Protocols.getProtocolColor
                     }
                     profileStatus.setTextColor(view.context.getColour(textColor))
                     profileStatus.background = DrawableCompat.wrap(
-                        view.context.getDrawable(R.drawable.bg_latency_badge)!!.mutate()
+                        AppCompatResources.getDrawable(view.context, R.drawable.bg_latency_badge)!!.mutate()
                     ).apply {
                         DrawableCompat.setTint(this, view.context.getColour(bgColor))
                     }
                 } else {
                     profileStatus.setTextColor(view.context.getColour(R.color.cyber_coral_text))
                     profileStatus.background = DrawableCompat.wrap(
-                        view.context.getDrawable(R.drawable.bg_latency_badge)!!.mutate()
+                        AppCompatResources.getDrawable(view.context, R.drawable.bg_latency_badge)!!.mutate()
                     ).apply {
                         DrawableCompat.setTint(this, view.context.getColour(R.color.color_cyber_badge_coral_bg))
                     }

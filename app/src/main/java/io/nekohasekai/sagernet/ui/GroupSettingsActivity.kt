@@ -10,6 +10,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.LayoutRes
 import androidx.appcompat.app.AlertDialog
@@ -199,6 +200,15 @@ class GroupSettingsActivity(
     @SuppressLint("CommitTransaction")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(this) {
+            if (needSave()) {
+                UnsavedChangesDialogFragment().apply { key() }
+                    .show(supportFragmentManager, null)
+            } else {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+            }
+        }
         setSupportActionBar(findViewById(R.id.toolbar))
         supportActionBar?.apply {
             setTitle(R.string.group_settings)
@@ -270,15 +280,8 @@ class GroupSettingsActivity(
 
     override fun onOptionsItemSelected(item: MenuItem) = child.onOptionsItemSelected(item)
 
-    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-    override fun onBackPressed() {
-        if (needSave()) {
-            UnsavedChangesDialogFragment().apply { key() }.show(supportFragmentManager, null)
-        } else super.onBackPressed()
-    }
-
     override fun onSupportNavigateUp(): Boolean {
-        if (!super.onSupportNavigateUp()) finish()
+        onBackPressedDispatcher.onBackPressed()
         return true
     }
 

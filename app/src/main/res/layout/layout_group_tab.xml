@@ -37,7 +37,7 @@
         android:includeFontPadding="false"
         android:maxLines="1"
         android:textColor="@color/cyber_text_secondary"
-        android:textSize="9sp"
+        android:textSize="11sp"
         android:visibility="gone"
         tools:text="12 GB · 8/17 · 3d"
         tools:visibility="visible" />

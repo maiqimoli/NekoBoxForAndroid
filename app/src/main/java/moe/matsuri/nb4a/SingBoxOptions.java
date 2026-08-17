@@ -22,6 +22,9 @@ public class SingBoxOptions {
 
     // base
 
+    private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
+    }.getType();
+
     private static final Gson gsonSingbox = new GsonBuilder()
             .registerTypeHierarchyAdapter(SingBoxOption.class, new SingBoxOptionSerializer())
             .setPrettyPrinting()
@@ -42,7 +45,7 @@ public class SingBoxOptions {
         }
 
         public Map<String, Object> asMap() {
-            return gsonSingbox.fromJson(gsonSingbox.toJson(this), Map.class);
+            return gsonSingbox.fromJson(gsonSingbox.toJson(this), MAP_TYPE);
         }
 
     }
@@ -57,7 +60,7 @@ public class SingBoxOptions {
         }
 
         public Map<String, Object> getBasicMap() {
-            Map<String, Object> map = gsonSingbox.fromJson(config, Map.class);
+            Map<String, Object> map = gsonSingbox.fromJson(config, MAP_TYPE);
             if (map == null) {
                 map = new HashMap<>();
             }
@@ -83,7 +86,9 @@ public class SingBoxOptions {
             if (src instanceof CustomSingBoxOption) {
                 map = ((CustomSingBoxOption) src).getBasicMap();
             } else {
-                map = gsonSingbox.fromJson(((TypeAdapter<SingBoxOption>) delegate).toJson(src), Map.class);
+                @SuppressWarnings("unchecked")
+                TypeAdapter<Object> typedDelegate = (TypeAdapter<Object>) delegate;
+                map = gsonSingbox.fromJson(typedDelegate.toJsonTree(src), MAP_TYPE);
             }
             if (src._hack_config_map != null && !src._hack_config_map.isEmpty()) {
                 Util.INSTANCE.mergeMap(map, src._hack_config_map);

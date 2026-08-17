@@ -12,6 +12,7 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
+import androidx.activity.addCallback
 import androidx.activity.result.component1
 import androidx.activity.result.component2
 import androidx.activity.result.contract.ActivityResultContracts
@@ -92,6 +93,15 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(this) {
+            if (DataStore.dirty) {
+                UnsavedChangesDialogFragment().apply { key() }
+                    .show(supportFragmentManager, null)
+            } else {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+            }
+        }
         setSupportActionBar(findViewById(R.id.toolbar))
         supportActionBar?.apply {
             setTitle(R.string.profile_config)
@@ -174,14 +184,8 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
 
     override fun onOptionsItemSelected(item: MenuItem) = child.onOptionsItemSelected(item)
 
-    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-    override fun onBackPressed() {
-        if (DataStore.dirty) UnsavedChangesDialogFragment().apply { key() }
-            .show(supportFragmentManager, null) else super.onBackPressed()
-    }
-
     override fun onSupportNavigateUp(): Boolean {
-        if (!super.onSupportNavigateUp()) finish()
+        onBackPressedDispatcher.onBackPressed()
         return true
     }
 

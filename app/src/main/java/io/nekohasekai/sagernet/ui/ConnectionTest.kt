@@ -167,8 +167,9 @@ class TestDialog(private val fragment: Fragment) {
 
     fun clearTesting() {
         val owner = fragment as? ConfigurationFragment ?: return
-        testingIds.toList().forEach { owner.updateProfileTesting(it, false) }
-        testingIds.clear()
+        val ids = testingIds.toList()
+        ids.forEach { owner.updateProfileTesting(it, false) }
+        ids.forEach(testingIds::remove)
     }
 
 }

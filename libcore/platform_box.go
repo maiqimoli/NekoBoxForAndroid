@@ -67,9 +67,9 @@ func (w *boxPlatformInterfaceWrapper) OpenTun(options *tun.Options, platformOpti
 		return nil, fmt.Errorf("intfBox.OpenTun: %v", err)
 	}
 	// Do you want to close it?
-	tunFd, err = syscall.Dup(tunFd)
+	tunFd, err = duplicateFileDescriptor(tunFd)
 	if err != nil {
-		return nil, fmt.Errorf("syscall.Dup: %v", err)
+		return nil, fmt.Errorf("duplicate file descriptor: %v", err)
 	}
 	//
 	options.FileDescriptor = int(tunFd)

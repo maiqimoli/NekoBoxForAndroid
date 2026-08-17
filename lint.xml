@@ -40,6 +40,7 @@
     <issue id="IconLauncherShape" severity="ignore" /> <!-- 启动图标设计资源 -->
     <issue id="MonochromeLauncherIcon" severity="ignore" /> <!-- 自适应图标未提供单色版本 -->
     <issue id="GradleDependency" severity="ignore" /> <!-- core-ktx 1.19.0 需未发布的 API 37，当前有意保持 1.18.0 -->
+    <issue id="NewerVersionAvailable" severity="ignore" /> <!-- 版本升级按兼容性与安全审计统一执行，不由联网提示自动推进 -->
     <issue id="BatteryLife" severity="ignore" /> <!-- REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 为应用核心功能 -->
     <issue id="QueryAllPackagesPermission" severity="ignore" /> <!-- 应用列表/分流功能必需 -->
     <issue id="ProtectedPermissions" severity="ignore" /> <!-- ${applicationId}.SERVICE 自定义权限 -->

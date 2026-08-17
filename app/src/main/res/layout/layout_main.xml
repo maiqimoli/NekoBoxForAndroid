@@ -114,7 +114,7 @@
                         android:lineSpacingExtra="1dp"
                         android:maxLines="2"
                         android:textColor="@color/cyber_emerald_text"
-                        android:textSize="10sp"
+                        android:textSize="11sp"
                         android:visibility="invisible"
                         tools:text="出口 203.0.113.8 · Hong Kong · Hong Kong · HK · Example ISP"
                         tools:visibility="visible" />
