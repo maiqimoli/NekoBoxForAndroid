@@ -423,7 +423,13 @@ import androidx.core.view.size
                         undoManager.flush()
                     }
                     configurationList[profile.id] = profile
-                    notifyItemChanged(index, ConfigurationPayload.LATENCY)
+                    // 刷新延迟 + 选中态（切换选中时旧节点需取消高亮）
+                    notifyItemChanged(
+                        index, listOf(
+                            ConfigurationPayload.LATENCY,
+                            ConfigurationPayload.SELECTED
+                        )
+                    )
                     //
                     val oldProfile = configurationList[profile.id]
                     if (noTraffic && oldProfile != null) {
