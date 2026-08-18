@@ -53,7 +53,7 @@
             android:id="@+id/profile_filter"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:chipSpacingHorizontal="4dp"
+            app:chipSpacingHorizontal="3dp"
             app:selectionRequired="true"
             app:singleLine="true"
             app:singleSelection="true">

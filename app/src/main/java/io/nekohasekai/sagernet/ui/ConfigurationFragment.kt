@@ -223,6 +223,7 @@ class ConfigurationFragment @JvmOverloads constructor(
             if (adapter.groupList.size > position) {
                 DataStore.selectedGroup = adapter.groupList[position].id
             }
+            updateSubscriptionMenuVisibility()
             uiController.syncGroupTabWindow(position, 0F)
             groupPager.post {
                 getCurrentProfileGroupFragment()?.let(::applyFiltersTo)
@@ -264,6 +265,7 @@ class ConfigurationFragment @JvmOverloads constructor(
             toolbar.inflateMenu(R.menu.add_profile_menu)
             toolbar.setOnMenuItemClickListener(this)
             updateRecentMenuVisibility()
+            updateSubscriptionMenuVisibility()
         } else {
             toolbar.setTitle(titleRes)
             toolbar.setNavigationIcon(R.drawable.ic_navigation_close)

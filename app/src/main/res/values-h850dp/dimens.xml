@@ -14,7 +14,7 @@
     <dimen name="group_tab_min_height">48dp</dimen>
     <dimen name="group_tab_content_height">44dp</dimen>
     <dimen name="group_tab_content_vertical_padding">3dp</dimen>
-    <dimen name="group_tab_content_translation_y">3dp</dimen>
+    <dimen name="group_tab_content_translation_y">0dp</dimen>
     <dimen name="profile_filter_bottom_padding">6dp</dimen>
 
     <dimen name="stats_bar_bottom_margin">12dp</dimen>

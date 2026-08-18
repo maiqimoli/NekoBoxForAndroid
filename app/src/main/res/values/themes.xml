@@ -139,15 +139,15 @@
 
     <style name="Widget.SagerNet.CyberFilterChip" parent="Widget.MaterialComponents.Chip.Choice">
         <item name="android:textColor">@color/cyber_filter_chip_text</item>
-        <item name="android:textSize">12sp</item>
+        <item name="android:textSize">11sp</item>
         <item name="checkedIconVisible">false</item>
         <item name="chipBackgroundColor">@color/cyber_filter_chip_background</item>
-        <item name="chipCornerRadius">17dp</item>
-        <item name="chipMinHeight">34dp</item>
+        <item name="chipCornerRadius">15dp</item>
+        <item name="chipMinHeight">30dp</item>
         <item name="chipStartPadding">0dp</item>
         <item name="chipEndPadding">0dp</item>
-        <item name="textStartPadding">8dp</item>
-        <item name="textEndPadding">8dp</item>
+        <item name="textStartPadding">6dp</item>
+        <item name="textEndPadding">6dp</item>
         <item name="chipStrokeColor">@color/cyber_filter_chip_stroke</item>
         <item name="chipStrokeWidth">1dp</item>
         <item name="ensureMinTouchTargetSize">false</item>
