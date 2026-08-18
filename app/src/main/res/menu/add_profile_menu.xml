@@ -81,10 +81,16 @@
     </item>
 
     <item
+        android:id="@+id/action_update_subscription"
+        android:icon="@drawable/ic_baseline_refresh_24"
+        android:title="@string/update_current_subscription"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/action_misc"
         android:icon="@drawable/ic_baseline_more_vert_24"
         android:title=""
-        app:showAsAction="ifRoom">
+        app:showAsAction="always">
         <menu>
             <item
                 android:id="@+id/action_jump_current"
@@ -133,11 +139,5 @@
             </item>
         </menu>
     </item>
-
-    <item
-        android:id="@+id/action_update_subscription"
-        android:icon="@drawable/ic_baseline_refresh_24"
-        android:title="@string/update_current_subscription"
-        app:showAsAction="ifRoom" />
 
 </menu>

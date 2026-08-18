@@ -1,9 +1,7 @@
 package io.nekohasekai.sagernet.ui
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import io.nekohasekai.sagernet.GroupType
 import io.nekohasekai.sagernet.R
-import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.ktx.snackbar
 
 fun ConfigurationFragment.refreshRecentUi() {
@@ -20,9 +18,7 @@ fun ConfigurationFragment.updateRecentMenuVisibility() {
 
 fun ConfigurationFragment.updateSubscriptionMenuVisibility() {
     if (select) return
-    toolbar.menu.findItem(R.id.action_update_subscription)?.isVisible = runCatching {
-        DataStore.currentGroup().type == GroupType.SUBSCRIPTION
-    }.getOrDefault(false)
+    toolbar.menu.findItem(R.id.action_update_subscription)?.isVisible = true
 }
 
 private fun ConfigurationFragment.restoreRecentSnapshot(snapshot: List<Long>) {
