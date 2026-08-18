@@ -1,6 +1,6 @@
 module libcore
 
-go 1.25.0
+go 1.26.6
 
 require (
 	github.com/matsuridayo/libneko v1.0.0 // replaced

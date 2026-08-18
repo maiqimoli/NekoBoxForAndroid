@@ -1,10 +1,7 @@
 
 
-@file:OptIn(DelicateCoroutinesApi::class)
-
 package io.nekohasekai.sagernet.group
 
-import kotlinx.coroutines.DelicateCoroutinesApi
 import io.nekohasekai.sagernet.*
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.GroupManager
@@ -45,7 +42,6 @@ abstract class GroupUpdater {
         profiles: List<AbstractBean>, groupId: Long?
     ) {
         val ipv6Mode = DataStore.ipv6Mode
-        val lookupPool = newFixedThreadPoolContext(5, "DNS Lookup")
         val lookupJobs = mutableListOf<Job>()
         val progress = Progress(profiles.size)
         if (groupId != null) {
@@ -54,44 +50,46 @@ abstract class GroupUpdater {
         }
         val ipv6First = ipv6Mode >= IPv6Mode.PREFER
 
-        for (profile in profiles) {
-            when (profile) {
-                // SNI rewrite unsupported
-                is NaiveBean -> continue
+        coroutineScope {
+            val lookupDispatcher = Dispatchers.IO.limitedParallelism(5)
+            for (profile in profiles) {
+                when (profile) {
+                    // SNI rewrite unsupported
+                    is NaiveBean -> continue
+                }
+
+                if (profile.serverAddress.isIpAddress()) continue
+
+                lookupJobs.add(launch(lookupDispatcher) {
+                    try {
+                        val results = if (
+                            SagerNet.underlyingNetwork != null &&
+                            DataStore.enableFakeDns &&
+                            DataStore.serviceState.started &&
+                            DataStore.serviceMode == Key.MODE_VPN
+                        ) {
+                            // FakeDNS
+                            SagerNet.underlyingNetwork!!
+                                .getAllByName(profile.serverAddress)
+                                .filterNotNull()
+                        } else {
+                            // System DNS is enough (when VPN connected, it uses v2ray-core)
+                            InetAddress.getAllByName(profile.serverAddress).filterNotNull()
+                        }
+                        if (results.isEmpty()) error("empty response")
+                        rewriteAddress(profile, results, ipv6First)
+                    } catch (e: Exception) {
+                        Logs.d("Lookup ${profile.serverAddress} failed: ${e.readableMessage}", e)
+                    }
+                    if (groupId != null) {
+                        progress.progress++
+                        GroupManager.postReload(groupId)
+                    }
+                })
             }
 
-            if (profile.serverAddress.isIpAddress()) continue
-
-            lookupJobs.add(GlobalScope.launch(lookupPool) {
-                try {
-                    val results = if (
-                        SagerNet.underlyingNetwork != null &&
-                        DataStore.enableFakeDns &&
-                        DataStore.serviceState.started &&
-                        DataStore.serviceMode == Key.MODE_VPN
-                    ) {
-                        // FakeDNS
-                        SagerNet.underlyingNetwork!!
-                            .getAllByName(profile.serverAddress)
-                            .filterNotNull()
-                    } else {
-                        // System DNS is enough (when VPN connected, it uses v2ray-core)
-                        InetAddress.getAllByName(profile.serverAddress).filterNotNull()
-                    }
-                    if (results.isEmpty()) error("empty response")
-                    rewriteAddress(profile, results, ipv6First)
-                } catch (e: Exception) {
-                    Logs.d("Lookup ${profile.serverAddress} failed: ${e.readableMessage}", e)
-                }
-                if (groupId != null) {
-                    progress.progress++
-                    GroupManager.postReload(groupId)
-                }
-            })
+            lookupJobs.joinAll()
         }
-
-        lookupJobs.joinAll()
-        lookupPool.close()
     }
 
     protected fun rewriteAddress(

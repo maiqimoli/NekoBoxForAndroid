@@ -28,6 +28,9 @@ import io.nekohasekai.sagernet.ui.MainActivity
 import io.nekohasekai.sagernet.utils.*
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
 import kotlinx.coroutines.DEBUG_PROPERTY_VALUE_ON
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import libcore.Libcore
 import moe.matsuri.nb4a.NativeInterface
 import moe.matsuri.nb4a.net.LocalResolverImpl
@@ -46,6 +49,8 @@ class SagerNet : Application(),
     }
 
     private val nativeInterface = NativeInterface()
+    /** Application-owned scope for work that intentionally outlives a screen. */
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val externalAssets: File by lazy { getExternalFilesDir(null) ?: filesDir }
     val process: String = JavaUtil.getProcessName()
@@ -125,6 +130,7 @@ class SagerNet : Application(),
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
 
+        AppIconCache.trim(level)
         Libcore.forceGc()
     }
 

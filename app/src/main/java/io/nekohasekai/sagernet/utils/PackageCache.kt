@@ -7,6 +7,7 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ktx.listenForPackageChanges
+import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -22,14 +23,22 @@ object PackageCache {
     val uidMap = HashMap<Int, HashSet<String>>()
     val loaded = Mutex(true)
     var registerd = AtomicBoolean(false)
+    private val reloadScheduled = AtomicBoolean(false)
 
     // called from init (suspend)
     fun register() {
         if (registerd.getAndSet(true)) return
         reload()
         app.listenForPackageChanges(false) {
-            reload()
-            labelMap.clear()
+            if (!reloadScheduled.compareAndSet(false, true)) return@listenForPackageChanges
+            runOnDefaultDispatcher {
+                try {
+                    reload()
+                    labelMap.clear()
+                } finally {
+                    reloadScheduled.set(false)
+                }
+            }
         }
         loaded.unlock()
     }

@@ -38,6 +38,13 @@
         android:text="@string/backup_settings"
         android:textAppearance="?attr/textAppearanceSubtitle2" />
 
+    <CheckBox
+        android:id="@+id/backup_encrypt"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/backup_encrypt"
+        android:textAppearance="?attr/textAppearanceSubtitle2" />
+
     <Button
         android:id="@+id/action_export"
         style="@style/Widget.AppCompat.Button.Colored"

@@ -21,12 +21,11 @@ import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.databinding.LayoutProgressListBinding
 import io.nekohasekai.sagernet.ktx.*
 import io.nekohasekai.sagernet.plugin.PluginManager
-import kotlinx.coroutines.DelicateCoroutinesApi
 import moe.matsuri.nb4a.ui.ConnectionTestNotification
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
@@ -174,8 +173,6 @@ class TestDialog(private val fragment: Fragment) {
 
 }
 
-@OptIn(DelicateCoroutinesApi::class)
-@Suppress("EXPERIMENTAL_API_USAGE")
 fun ConfigurationFragment.pingTestImpl(fragment: ConfigurationFragment, icmpPing: Boolean) {
     if (DataStore.runningTest) return else DataStore.runningTest = true
     val test = TestDialog(fragment)
@@ -183,7 +180,9 @@ fun ConfigurationFragment.pingTestImpl(fragment: ConfigurationFragment, icmpPing
     val testJobs = mutableListOf<Job>()
     val group = DataStore.currentGroup()
 
-    val mainJob = GlobalScope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
+    val mainJob = fragment.viewLifecycleOwner.lifecycleScope.launch(
+        Dispatchers.Default, start = CoroutineStart.LAZY
+    ) {
         val profilesList = SagerDatabase.proxyDao.getByGroup(group.id).filter {
             if (icmpPing) {
                 if (it.requireBean().canICMPing()) {
@@ -343,7 +342,6 @@ fun ConfigurationFragment.pingTestImpl(fragment: ConfigurationFragment, icmpPing
     mainJob.start()
 }
 
-@OptIn(DelicateCoroutinesApi::class)
 fun ConfigurationFragment.urlTestImpl(
     fragment: ConfigurationFragment,
     profileIds: Set<Long>? = null,
@@ -354,7 +352,9 @@ fun ConfigurationFragment.urlTestImpl(
     val testJobs = mutableListOf<Job>()
     val group = DataStore.currentGroup()
 
-    val mainJob = GlobalScope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
+    val mainJob = fragment.viewLifecycleOwner.lifecycleScope.launch(
+        Dispatchers.Default, start = CoroutineStart.LAZY
+    ) {
         val profilesList = SagerDatabase.proxyDao.getByGroup(group.id).filter {
             profileIds == null || it.id in profileIds
         }

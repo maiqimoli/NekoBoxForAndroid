@@ -3,10 +3,13 @@ package io.nekohasekai.sagernet.bg
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy.UPDATE
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkerParameters
 import androidx.work.multiprocess.RemoteWorkManager
@@ -30,13 +33,14 @@ object SubscriptionUpdater {
         if (subscriptions.isEmpty()) return
 
         // PeriodicWorkRequest.MIN_PERIODIC_INTERVAL_MILLIS
-        var minDelay =
-            subscriptions.minByOrNull { it.subscription!!.autoUpdateDelay }!!.subscription!!.autoUpdateDelay.toLong()
+        val minDelay = subscriptions.minOf {
+            normalizedPeriodMinutes(it.subscription!!.autoUpdateDelay)
+        }
         val now = System.currentTimeMillis() / 1000L
-        var minInitDelay =
-            subscriptions.minOf { now - it.subscription!!.lastUpdated - (minDelay * 60) }
-        if (minDelay < 15) minDelay = 15
-        if (minInitDelay > 60) minInitDelay = 60
+        val minInitDelay = subscriptions.minOf { group ->
+            val subscription = group.subscription!!
+            secondsUntilDue(now, subscription.lastUpdated, subscription.autoUpdateDelay)
+        }
 
         // main process
         RemoteWorkManager.getInstance(app).enqueueUniquePeriodicWork(
@@ -44,7 +48,19 @@ object SubscriptionUpdater {
             UPDATE,
             PeriodicWorkRequest.Builder(UpdateTask::class.java, minDelay, TimeUnit.MINUTES)
                 .apply {
-                    if (minInitDelay > 0) setInitialDelay(minInitDelay, TimeUnit.SECONDS)
+                    setConstraints(
+                        Constraints.Builder()
+                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                            .build()
+                    )
+                    setBackoffCriteria(
+                        BackoffPolicy.EXPONENTIAL,
+                        30,
+                        TimeUnit.SECONDS
+                    )
+                    if (minInitDelay > 0) {
+                        setInitialDelay(minInitDelay, TimeUnit.SECONDS)
+                    }
                 }
                 .build()
         )
@@ -71,6 +87,7 @@ object SubscriptionUpdater {
                 subscriptions = subscriptions.filter { !it.subscription!!.updateWhenConnectedOnly }
             }
 
+            var failedUpdates = 0
             if (subscriptions.isNotEmpty()) for (profile in subscriptions) {
                 val subscription = profile.subscription!!
 
@@ -92,13 +109,34 @@ object SubscriptionUpdater {
                     nm.notify(2, notification.build())
                 }
 
-                GroupUpdater.executeUpdate(profile, false)
+                if (!GroupUpdater.executeUpdate(profile, false)) failedUpdates++
             }
 
             nm.cancel(2)
 
-            return Result.success()
+            // GroupUpdater reports malformed subscriptions as failures too. Retry a
+            // small number of times for transient DNS/HTTP failures, then let the next
+            // periodic interval try again instead of retrying forever.
+            return if (failedUpdates > 0 && runAttemptCount < MAX_RETRY_ATTEMPTS) {
+                Result.retry()
+            } else {
+                Result.success()
+            }
         }
     }
+
+    private const val MIN_PERIOD_MINUTES = 15L
+    private const val MAX_RETRY_ATTEMPTS = 3
+
+    internal fun normalizedPeriodMinutes(configuredMinutes: Int): Long =
+        configuredMinutes.toLong().coerceAtLeast(MIN_PERIOD_MINUTES)
+
+    internal fun secondsUntilDue(
+        nowSeconds: Long,
+        lastUpdatedSeconds: Int,
+        configuredMinutes: Int
+    ): Long = (lastUpdatedSeconds.toLong() +
+            normalizedPeriodMinutes(configuredMinutes) * 60L - nowSeconds)
+        .coerceAtLeast(0L)
 
 }

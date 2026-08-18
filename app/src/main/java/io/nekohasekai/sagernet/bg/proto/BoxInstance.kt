@@ -207,7 +207,6 @@ abstract class BoxInstance(
         box.start()
     }
 
-    @Suppress("EXPERIMENTAL_API_USAGE")
     override fun close() {
         for (instance in externalInstances.values) {
             runCatching {
@@ -217,7 +216,7 @@ abstract class BoxInstance(
 
         cacheFiles.removeAll { it.delete(); true }
 
-        if (::processes.isInitialized) processes.close(GlobalScope + Dispatchers.IO)
+        if (::processes.isInitialized) processes.close(SagerNet.application.applicationScope)
 
         if (::box.isInitialized) {
             box.close()

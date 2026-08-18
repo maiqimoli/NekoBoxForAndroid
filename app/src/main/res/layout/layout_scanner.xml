@@ -24,5 +24,6 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:layout_marginTop="@dimen/camera_scan_flashlight_margin_top"
+        android:contentDescription="@string/toggle_flashlight"
         android:src="@drawable/camera_scan_flashlight_selector" />
 </FrameLayout>

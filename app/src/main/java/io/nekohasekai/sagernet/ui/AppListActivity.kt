@@ -14,7 +14,6 @@ import android.view.ViewGroup
 import android.widget.Filter
 import android.widget.Filterable
 import androidx.annotation.UiThread
-import androidx.collection.LruCache
 import androidx.core.util.contains
 import androidx.core.util.set
 import androidx.core.view.ViewCompat
@@ -36,6 +35,7 @@ import io.nekohasekai.sagernet.ktx.crossFadeFrom
 import io.nekohasekai.sagernet.ktx.onMainDispatcher
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.utils.PackageCache
+import io.nekohasekai.sagernet.utils.AppIconCache
 import io.nekohasekai.sagernet.widget.ListListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -46,8 +46,6 @@ import kotlin.coroutines.coroutineContext
 class AppListActivity : ThemedActivity() {
     companion object {
         private const val SWITCH = "switch"
-        private val iconCache = LruCache<String, Drawable>(200)
-
         private val cachedApps
             get() = PackageCache.installedPackages.toMutableMap().apply {
                 remove(BuildConfig.APPLICATION_ID)
@@ -60,7 +58,7 @@ class AppListActivity : ThemedActivity() {
     ) {
         val name: CharSequence = appInfo.loadLabel(pm)    // cached for sorting
         val icon: Drawable by lazy {
-            iconCache[packageName] ?: appInfo.loadIcon(pm).also { iconCache.put(packageName, it) }
+            AppIconCache.getOrPut(packageName) { appInfo.loadIcon(pm) }
         }
         val uid get() = appInfo.uid
         val sys get() = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0

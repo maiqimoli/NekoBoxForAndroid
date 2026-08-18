@@ -41,7 +41,9 @@ object DefaultNetworkListener {
     }
 
     private val listenerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val networkActor = listenerScope.actor<NetworkMessage>(capacity = Channel.UNLIMITED) {
+    // Network callbacks can burst during Wi-Fi/VPN handover. Keep a bounded queue so
+    // a broken listener cannot grow memory without limit.
+    private val networkActor = listenerScope.actor<NetworkMessage>(capacity = Channel.BUFFERED) {
         val listeners = mutableMapOf<Any, (Network?) -> Unit>()
         var network: Network? = null
         val pendingRequests = arrayListOf<NetworkMessage.Get>()

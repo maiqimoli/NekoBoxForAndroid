@@ -162,6 +162,10 @@
         <item quantity="other">已添加 %d 个配置</item>
     </plurals>
     <string name="undo">还原</string>
+    <string name="redo">重做</string>
+    <string name="insert_tab">插入制表符</string>
+    <string name="format_document">格式化文档</string>
+    <string name="toggle_flashlight">切换手电筒</string>
     <!-- tasker -->
     <!-- status -->
     <string name="connecting">正在连接…</string>
@@ -485,6 +489,10 @@
     <string name="backup_import">导入</string>
     <string name="backup_summary">如果路由规则与配置一起备份，则自定义出站将丢失。</string>
     <string name="backup_settings">设置</string>
+    <string name="backup_encrypt">使用密码加密备份</string>
+    <string name="backup_password">备份密码</string>
+    <string name="backup_password_required">请输入备份密码</string>
+    <string name="backup_password_invalid">备份密码错误或文件已损坏</string>
     <string name="backup_not_file">不是一个备份文件，预期 .json，但 %s</string>
     <string name="backup_rules">路由规则</string>
     <string name="nat_result_hint">NAT 测试结果</string>
