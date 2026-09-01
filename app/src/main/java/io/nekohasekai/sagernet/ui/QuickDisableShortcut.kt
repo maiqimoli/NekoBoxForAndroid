@@ -25,7 +25,9 @@ import android.content.pm.ShortcutManager
 import android.os.Build
 import android.os.Bundle
 import androidx.core.content.getSystemService
+import io.nekohasekai.sagernet.ACTION_QUICK_DISABLE
 import io.nekohasekai.sagernet.SagerNet
+import io.nekohasekai.sagernet.authorizeShortcutLaunch
 import io.nekohasekai.sagernet.aidl.ISagerNetService
 import io.nekohasekai.sagernet.bg.BaseService
 import io.nekohasekai.sagernet.bg.SagerConnection
@@ -35,9 +37,11 @@ class QuickDisableShortcut : Activity(), SagerConnection.Callback {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        connection.connect(this, this)
-        if (Build.VERSION.SDK_INT >= 25) {
-            getSystemService<ShortcutManager>()!!.reportShortcutUsed("disable")
+        authorizeShortcutLaunch(ACTION_QUICK_DISABLE) {
+            connection.connect(this, this)
+            if (Build.VERSION.SDK_INT >= 25) {
+                getSystemService<ShortcutManager>()!!.reportShortcutUsed("disable")
+            }
         }
     }
 

@@ -6,9 +6,9 @@
         android:shortcutLongLabel="@string/quick_toggle"
         android:shortcutShortLabel="@string/quick_toggle">
         <intent
-            android:action="android.intent.action.MAIN"
+            android:action="io.nekohasekai.sagernet.action.QUICK_TOGGLE"
             android:targetClass="io.nekohasekai.sagernet.QuickToggleShortcut"
-            android:targetPackage="moe.nb4a" />
+            android:targetPackage="@string/shortcut_target_package" />
     </shortcut>
     <shortcut
         android:icon="@drawable/ic_qu_shadowsocks_launcher"
@@ -16,9 +16,9 @@
         android:shortcutLongLabel="@string/quick_enable"
         android:shortcutShortLabel="@string/quick_enable">
         <intent
-            android:action="android.intent.action.MAIN"
+            android:action="io.nekohasekai.sagernet.action.QUICK_ENABLE"
             android:targetClass="io.nekohasekai.sagernet.ui.QuickEnableShortcut"
-            android:targetPackage="moe.nb4a" />
+            android:targetPackage="@string/shortcut_target_package" />
     </shortcut>
     <shortcut
         android:icon="@drawable/ic_qu_shadowsocks_launcher"
@@ -26,9 +26,9 @@
         android:shortcutLongLabel="@string/quick_disable"
         android:shortcutShortLabel="@string/quick_disable">
         <intent
-            android:action="android.intent.action.MAIN"
+            android:action="io.nekohasekai.sagernet.action.QUICK_DISABLE"
             android:targetClass="io.nekohasekai.sagernet.ui.QuickDisableShortcut"
-            android:targetPackage="moe.nb4a" />
+            android:targetPackage="@string/shortcut_target_package" />
     </shortcut>
     <shortcut
         android:icon="@drawable/ic_qu_camera_launcher"
@@ -38,6 +38,6 @@
         <intent
             android:action="android.intent.action.MAIN"
             android:targetClass="io.nekohasekai.sagernet.ui.ScannerActivity"
-            android:targetPackage="moe.nb4a" />
+            android:targetPackage="@string/shortcut_target_package" />
     </shortcut>
 </shortcuts>

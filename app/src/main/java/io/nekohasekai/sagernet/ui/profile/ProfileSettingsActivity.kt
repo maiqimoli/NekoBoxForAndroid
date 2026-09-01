@@ -330,7 +330,7 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
                     ).setIntent(Intent(
                         context, QuickToggleShortcut::class.java
                     ).apply {
-                        action = Intent.ACTION_MAIN
+                        action = ACTION_QUICK_TOGGLE
                         putExtra("profile", ent.id)
                     }).build()
                 ShortcutManagerCompat.requestPinShortcut(activity, shortcut, null)

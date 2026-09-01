@@ -9,6 +9,7 @@ import android.os.Build
 import android.widget.Toast
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.plugin.PluginManager.loadString
+import io.nekohasekai.sagernet.plugin.PluginSecurity
 import io.nekohasekai.sagernet.utils.PackageCache
 
 object Plugins {
@@ -21,11 +22,24 @@ object Plugins {
     const val METADATA_KEY_EXECUTABLE_PATH = "io.nekohasekai.sagernet.plugin.executable_path"
 
     fun isExe(pkg: PackageInfo): Boolean {
-        if (pkg.providers?.isEmpty() == true) return false
-        val provider = pkg.providers?.get(0) ?: return false
+        val packageName = pkg.packageName ?: return false
+        val applicationInfo = pkg.applicationInfo ?: return false
+        return applicationInfo.packageName == packageName && applicationInfo.enabled &&
+                pkg.providers.orEmpty().any { isUsableExeProvider(it, packageName) }
+    }
+
+    fun isExeProvider(provider: ProviderInfo): Boolean {
         val auth = provider.authority ?: return false
         return auth.startsWith(AUTHORITIES_PREFIX_SEKAI_EXE)
                 || auth.startsWith(AUTHORITIES_PREFIX_NEKO_EXE)
+    }
+
+    fun isUsableExeProvider(provider: ProviderInfo, expectedPackageName: String): Boolean {
+        val applicationInfo = provider.applicationInfo ?: return false
+        return provider.exported && provider.enabled &&
+                provider.packageName == expectedPackageName &&
+                applicationInfo.packageName == expectedPackageName &&
+                applicationInfo.enabled && isExeProvider(provider)
     }
 
     fun preferExePrefix(): String {
@@ -51,9 +65,16 @@ object Plugins {
         }
     }
 
-    fun getPlugin(pluginId: String): ProviderInfo? {
+    fun getPlugin(pluginId: String, requireRoot: Boolean = false): ProviderInfo? {
         if (pluginId.isBlank()) return null
-        getPluginExternal(pluginId)?.let { return it }
+        getPluginExternal(pluginId)?.let { external ->
+            val trustedForRoot = if (requireRoot) {
+                PackageCache.resolveTrustedPluginProvider(external)?.trustedForRoot == true
+            } else {
+                false
+            }
+            if (PluginSecurity.mayUseExternalPlugin(requireRoot, trustedForRoot)) return external
+        }
         // internal so
         return ProviderInfo().apply { authority = AUTHORITIES_PREFIX_NEKO_EXE }
     }
@@ -88,10 +109,30 @@ object Plugins {
 
     private fun getExtPluginNew(pluginId: String): List<ProviderInfo> {
         PackageCache.awaitLoadSync()
-        val pkgs = PackageCache.installedPluginPackages
-            .map { it.value }
-            .filter { it.providers?.get(0)?.loadString(METADATA_KEY_ID) == pluginId }
-        return pkgs.mapNotNull { it.providers?.get(0) }
+        return (PackageCache.installedPluginPackages + PackageCache.rejectedPluginPackages)
+            .values.filter(PackageCache::isTrustedPluginPackage).flatMap { pkg ->
+                pkg.providers.orEmpty().filter { provider ->
+                    isUsableExeProvider(provider, pkg.packageName) &&
+                            provider.loadString(METADATA_KEY_ID) == pluginId
+                }
+            }
+    }
+
+    fun getRejectedPluginPackages(pluginId: String): List<String> {
+        if (pluginId.isBlank()) return emptyList()
+        PackageCache.awaitLoadSync()
+        val rejectedFromCache =
+            (PackageCache.installedPluginPackages + PackageCache.rejectedPluginPackages)
+                .values.filterNot(PackageCache::isTrustedPluginPackage).filter { pkg ->
+                    pkg.providers.orEmpty().any { provider ->
+                        isUsableExeProvider(provider, pkg.packageName) &&
+                                provider.loadString(METADATA_KEY_ID) == pluginId
+                    }
+                }.map { it.packageName }
+        val rejectedFromQuery = queryExtPluginOld(pluginId)
+            .filterNot(PackageCache::isTrustedPluginProvider)
+            .map { it.packageName }
+        return (rejectedFromCache + rejectedFromQuery).distinct()
     }
 
     private fun buildUri(id: String, auth: String) = Uri.Builder()
@@ -101,19 +142,30 @@ object Plugins {
         .build()
 
     private fun getExtPluginOld(pluginId: String): List<ProviderInfo> {
+        return queryExtPluginOld(pluginId).filter(PackageCache::isTrustedPluginProvider)
+    }
+
+    private fun queryExtPluginOld(pluginId: String): List<ProviderInfo> {
         var flags = PackageManager.GET_META_DATA
         if (Build.VERSION.SDK_INT >= 24) {
             flags =
                 flags or PackageManager.MATCH_DIRECT_BOOT_UNAWARE or PackageManager.MATCH_DIRECT_BOOT_AWARE
         }
-        val list1 = SagerNet.application.packageManager.queryIntentContentProviders(
-            Intent(ACTION_NATIVE_PLUGIN, buildUri(pluginId, "io.nekohasekai.sagernet")), flags
-        )
-        val list2 = SagerNet.application.packageManager.queryIntentContentProviders(
-            Intent(ACTION_NATIVE_PLUGIN, buildUri(pluginId, "moe.matsuri.lite")), flags
-        )
+        val list1 = runCatching {
+            SagerNet.application.packageManager.queryIntentContentProviders(
+                Intent(ACTION_NATIVE_PLUGIN, buildUri(pluginId, "io.nekohasekai.sagernet")), flags
+            )
+        }.getOrDefault(emptyList())
+        val list2 = runCatching {
+            SagerNet.application.packageManager.queryIntentContentProviders(
+                Intent(ACTION_NATIVE_PLUGIN, buildUri(pluginId, "moe.matsuri.lite")), flags
+            )
+        }.getOrDefault(emptyList())
         return (list1 + list2).mapNotNull {
             it.providerInfo
-        }.filter { it.exported }
+        }.filter { provider ->
+            val packageName = provider.packageName ?: return@filter false
+            isUsableExeProvider(provider, packageName)
+        }
     }
 }

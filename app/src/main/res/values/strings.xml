@@ -24,6 +24,7 @@
     <string name="quick_toggle">Toggle</string>
     <string name="quick_enable">Enable</string>
     <string name="quick_disable">Disable</string>
+    <string name="shortcut_control_confirmation">Allow this shortcut to change the VPN state?</string>
     <string name="tile_title">Switcher</string>
     <string name="menu_traffic">Traffic</string>
     <string name="menu_dashboard">sing-box Dashboard</string>
@@ -369,6 +370,12 @@
     <string name="plugin_configure">Configure…</string>
     <string name="plugin_disabled">Disabled</string>
     <string name="plugin_unknown">Unknown plugin %s</string>
+    <string name="plugin_untrusted_error">Plugin package %s requires confirmation before it can run.</string>
+    <string name="plugin_trust_title">Trust this plugin?</string>
+    <string name="plugin_trust_choose_title">Choose a plugin to trust</string>
+    <string name="plugin_trust_message">%1$s will run native code inside the VPN service. Verify the source and signer before continuing.\n\nPackage: %2$s\nSigner SHA-256:\n%3$s</string>
+    <string name="plugin_trust_action">Trust and connect</string>
+    <string name="plugin_trust_signature_changed">The plugin signature changed. Review the new signer before continuing.</string>
     <string name="plugin_untrusted">Warning: This plugin does not seem to come from a known trusted
         source.</string>
     <string name="plugin_auto_connect_unlock_only">This plugin might not work with Auto Connect</string>
@@ -623,6 +630,7 @@
     <string name="enable_clash_api">Enable Clash API</string>
     <string name="log_level">Log Level</string>
     <string name="enable_clash_api_summary">Provide clash api and yacd dashboard at 127.0.0.1:9090</string>
+    <string name="invalid_dashboard_url">Use an HTTPS or local dashboard URL</string>
     <string name="xtls_flow">Flow (VLESS Sub-protocol)</string>
     <string name="ads">Ads</string>
     <string name="bypass_lan_in_core">Bypass LAN in Core</string>
@@ -662,7 +670,6 @@
     <string name="padding">Padding</string>
     <string name="network_change_reset_connections">Reset outbound connections when network changes</string>
     <string name="wake_reset_connections">Reset outbound connections when device wake from sleep</string>
-    <string name="preview_version_hint">This application is a preview version and may contain many problems. If you do not want to test it, please go to GitHub to download the Release version!</string>
     <string name="check_update_preview">Check for preview version updates</string>
     <string name="check_update_release">Check for release version updates</string>
     <string name="update_dialog_title">New version available</string>

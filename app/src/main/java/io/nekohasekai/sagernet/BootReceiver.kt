@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Process
 import io.nekohasekai.sagernet.bg.SubscriptionUpdater
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.ktx.app
@@ -23,6 +24,17 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        val action = intent.action
+        if (action !in setOf(
+                Intent.ACTION_BOOT_COMPLETED,
+                Intent.ACTION_LOCKED_BOOT_COMPLETED,
+                Intent.ACTION_MY_PACKAGE_REPLACED,
+            )
+        ) return
+        if (Build.VERSION.SDK_INT >= 34 &&
+            getSentFromUid() != Process.SYSTEM_UID && getSentFromUid() != Process.ROOT_UID
+        ) return
+
         runOnDefaultDispatcher {
             SubscriptionUpdater.reconfigureUpdater()
         }
@@ -32,7 +44,7 @@ class BootReceiver : BroadcastReceiver() {
             return
         }
 
-        val doStart = when (intent.action) {
+        val doStart = when (action) {
             Intent.ACTION_LOCKED_BOOT_COMPLETED -> false // DataStore.directBootAware
             else -> Build.VERSION.SDK_INT < 24 || SagerNet.user.isUserUnlocked
         } && DataStore.selectedProxy > 0

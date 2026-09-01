@@ -14,6 +14,7 @@
     <string name="quick_toggle">切换</string>
     <string name="quick_enable">启用</string>
     <string name="quick_disable">禁用</string>
+    <string name="shortcut_control_confirmation">允许此快捷方式更改 VPN 状态吗？</string>
     <!-- group -->
     <string name="group_name">分组名</string>
     <string name="group_update">更新</string>
@@ -181,6 +182,12 @@
     <string name="plugin_configure">设置…</string>
     <string name="plugin_disabled">已停用</string>
     <string name="plugin_unknown">未知插件: %s</string>
+    <string name="plugin_untrusted_error">插件包 %s 需要确认后才能运行。</string>
+    <string name="plugin_trust_title">信任此插件？</string>
+    <string name="plugin_trust_choose_title">选择要信任的插件</string>
+    <string name="plugin_trust_message">%1$s 将在 VPN 服务中运行本机代码。继续前请核对安装来源与签名。\n\n包名：%2$s\n签名 SHA-256：\n%3$s</string>
+    <string name="plugin_trust_action">信任并连接</string>
+    <string name="plugin_trust_signature_changed">插件签名已变化，请核对新签名后再次确认。</string>
     <string name="plugin_untrusted">请注意: 此插件的不来自可靠的来源.</string>
     <string name="plugin_auto_connect_unlock_only">此插件可能不支持自动连接</string>
     <string name="proxy_cat">服务器设置</string>
@@ -572,7 +579,6 @@
     <string name="global_allow_insecure">总是跳过 TLS 证书验证</string>
     <string name="network_change_reset_connections">当网络发生变化时重置出站连接</string>
     <string name="wake_reset_connections">当设备从睡眠状态唤醒时重置出站连接</string>
-    <string name="preview_version_hint">本应用为预览版，可能存在诸多问题。若您不愿参与测试，请前往GitHub下载正式发布版本！</string>
     <string name="check_update_preview">检查预览版更新</string>
     <string name="check_update_release">检查正式版更新</string>
     <string name="update_dialog_title">发现新版本</string>

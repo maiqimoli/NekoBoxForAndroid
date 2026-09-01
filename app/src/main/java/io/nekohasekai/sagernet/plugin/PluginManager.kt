@@ -6,6 +6,7 @@ import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.bg.BaseService
 import io.nekohasekai.sagernet.ktx.Logs
+import io.nekohasekai.sagernet.utils.PackageCache
 import moe.matsuri.nb4a.plugin.Plugins
 import java.io.File
 import java.io.FileNotFoundException
@@ -18,34 +19,46 @@ object PluginManager {
             SagerNet.application.getString(R.string.plugin_unknown, plugin)
     }
 
+    class PluginUntrustedException(val plugin: String, val packages: List<String>) : SecurityException(),
+        BaseService.ExpectedException {
+        override fun getLocalizedMessage() = SagerNet.application.getString(
+            R.string.plugin_untrusted_error,
+            packages.joinToString(),
+        )
+    }
+
     data class InitResult(
         val path: String,
         val info: ProviderInfo,
+        val trustedForRoot: Boolean,
     )
 
     @Throws(Throwable::class)
-    fun init(pluginId: String): InitResult? {
+    fun init(pluginId: String, requireRoot: Boolean = false): InitResult? {
         if (pluginId.isEmpty()) return null
         var throwable: Throwable? = null
 
         try {
-            val result = initNative(pluginId)
+            val result = initNative(pluginId, requireRoot)
             if (result != null) return result
         } catch (t: Throwable) {
             throwable = t
             Logs.w(t)
         }
 
-        throw throwable ?: PluginNotFoundException(pluginId)
+        if (throwable != null) throw throwable
+        val rejectedPackages = Plugins.getRejectedPluginPackages(pluginId)
+        throw if (rejectedPackages.isNotEmpty()) PluginUntrustedException(pluginId, rejectedPackages)
+        else PluginNotFoundException(pluginId)
     }
 
-    private fun initNative(pluginId: String): InitResult? {
-        val info = Plugins.getPlugin(pluginId) ?: return null
+    private fun initNative(pluginId: String, requireRoot: Boolean): InitResult? {
+        val info = Plugins.getPlugin(pluginId, requireRoot) ?: return null
 
         // internal so
         if (info.applicationInfo == null) {
             try {
-                initNativeInternal(pluginId)?.let { return InitResult(it, info) }
+                initNativeInternal(pluginId)?.let { return InitResult(it, info, true) }
             } catch (t: Throwable) {
                 Logs.w("initNativeInternal failed", t)
             }
@@ -53,7 +66,9 @@ object PluginManager {
         }
 
         try {
-            initNativeFaster(info)?.let { return InitResult(it, info) }
+            initNativeFaster(pluginId, info)?.let { return it }
+        } catch (t: PluginUntrustedException) {
+            throw t
         } catch (t: Throwable) {
             Logs.w("initNativeFaster failed", t)
         }
@@ -64,11 +79,9 @@ object PluginManager {
 
     private fun initNativeInternal(pluginId: String): String? {
         fun soIfExist(soName: String): String? {
-            val f = File(SagerNet.application.applicationInfo.nativeLibraryDir, soName)
-            if (f.canExecute()) {
-                return f.absolutePath
-            }
-            return null
+            return runCatching {
+                resolveExecutable(SagerNet.application.applicationInfo.nativeLibraryDir, soName)
+            }.getOrNull()
         }
         return when (pluginId) {
             "hysteria-plugin" -> soIfExist("libhysteria.so")
@@ -77,22 +90,45 @@ object PluginManager {
         }
     }
 
-    private fun initNativeFaster(provider: ProviderInfo): String? {
-        return provider.loadString(Plugins.METADATA_KEY_EXECUTABLE_PATH)
-            ?.let { relativePath ->
-                File(provider.applicationInfo.nativeLibraryDir).resolve(relativePath).apply {
-                    check(canExecute())
-                }.absolutePath
-            }
+    private fun initNativeFaster(pluginId: String, discoveredProvider: ProviderInfo): InitResult? {
+        val verified = PackageCache.resolveTrustedPluginProvider(discoveredProvider)
+            ?: throw PluginUntrustedException(
+                pluginId,
+                listOfNotNull(discoveredProvider.packageName),
+            )
+        val provider = verified.provider
+        if (provider.loadString(Plugins.METADATA_KEY_ID) != pluginId) return null
+        val relativePath = provider.loadString(Plugins.METADATA_KEY_EXECUTABLE_PATH) ?: return null
+        val nativeLibraryDir = provider.applicationInfo?.nativeLibraryDir ?: return null
+        return InitResult(
+            resolveExecutable(nativeLibraryDir, relativePath),
+            provider,
+            verified.trustedForRoot,
+        )
+    }
+
+    internal fun resolveExecutable(nativeLibraryDir: String, relativePath: String): String {
+        require(relativePath.isNotBlank()) { "Plugin executable path is empty" }
+        val libraryDir = File(nativeLibraryDir).canonicalFile
+        val executable = File(libraryDir, relativePath).canonicalFile
+        val directoryPrefix = libraryDir.path.trimEnd(File.separatorChar) + File.separator
+        check(executable.path.startsWith(directoryPrefix)) {
+            "Plugin executable must be inside nativeLibraryDir"
+        }
+        check(executable.isFile && executable.canExecute()) {
+            "Plugin executable is missing or is not executable"
+        }
+        return executable.path
     }
 
     @Suppress("DEPRECATION") // Bundle.get 为 Java 弃用 API，无兼容替代
-    fun ComponentInfo.loadString(key: String) = when (val value = metaData.get(key)) {
-        is String -> value
-        is Int -> SagerNet.application.packageManager.getResourcesForApplication(applicationInfo)
-            .getString(value)
-
-        null -> null
-        else -> error("meta-data $key has invalid type ${value.javaClass}")
-    }
+    fun ComponentInfo.loadString(key: String): String? = runCatching {
+        when (val value = metaData?.get(key)) {
+            is String -> value
+            is Int -> SagerNet.application.packageManager
+                .getResourcesForApplication(applicationInfo)
+                .getString(value)
+            else -> null
+        }
+    }.getOrNull()
 }
