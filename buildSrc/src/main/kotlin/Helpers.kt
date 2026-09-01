@@ -3,6 +3,7 @@
 import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.gradle.AbstractAppExtension
 import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.getByName
@@ -10,7 +11,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 import java.util.Base64
 import java.util.Properties
-import kotlin.system.exitProcess
 
 private val Project.android get() = extensions.getByName<ApplicationExtension>("android")
 
@@ -124,24 +124,47 @@ fun Project.setupAppCommon() {
     val keystorePwd = lp.getProperty("KEYSTORE_PASS") ?: System.getenv("KEYSTORE_PASS")
     val alias = lp.getProperty("ALIAS_NAME") ?: System.getenv("ALIAS_NAME")
     val pwd = lp.getProperty("ALIAS_PASS") ?: System.getenv("ALIAS_PASS")
+    val keystorePath = System.getenv("KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+        ?: lp.getProperty("KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+        ?: listOf("release.keystore.local", "release.keystore")
+            .firstOrNull { rootProject.file(it).isFile }
+        ?: "release.keystore.local"
+    val signingValues = linkedMapOf(
+        "KEYSTORE_PASS" to keystorePwd,
+        "ALIAS_NAME" to alias,
+        "ALIAS_PASS" to pwd
+    )
+    val configuredValues = signingValues.filterValues { !it.isNullOrBlank() }
+    val missingValues = signingValues.filterValues { it.isNullOrBlank() }.keys
+    val requireReleaseSigning =
+        providers.gradleProperty("requireReleaseSigning").orNull.equals("true", ignoreCase = true) ||
+                System.getenv("REQUIRE_RELEASE_SIGNING").equals("true", ignoreCase = true)
+
+    if (configuredValues.isNotEmpty() && missingValues.isNotEmpty()) {
+        throw GradleException(
+            "Incomplete release signing configuration. Missing: ${missingValues.joinToString()}"
+        )
+    }
+    if (requireReleaseSigning && missingValues.isNotEmpty()) {
+        throw GradleException(
+            "Release signing is required. Missing: ${missingValues.joinToString()}"
+        )
+    }
 
     android.apply {
-        if (keystorePwd != null) {
-            signingConfigs {
-                create("release") {
-                    storeFile = rootProject.file("release.keystore")
-                    storePassword = keystorePwd
-                    keyAlias = alias
-                    keyPassword = pwd
-                }
+        if (missingValues.isEmpty()) {
+            val keystoreFile = rootProject.file(keystorePath)
+            if (!keystoreFile.isFile) {
+                throw GradleException("Release keystore is missing: ${keystoreFile.absolutePath}")
             }
-        }
-        buildTypes {
-            val key = signingConfigs.findByName("release")
-            if (key != null) {
-                getByName("release").signingConfig = key
-                getByName("debug").signingConfig = key
+
+            val releaseSigning = signingConfigs.maybeCreate("release").apply {
+                storeFile = keystoreFile
+                storePassword = requireNotNull(keystorePwd)
+                keyAlias = requireNotNull(alias)
+                keyPassword = requireNotNull(pwd)
             }
+            buildTypes.getByName("release").signingConfig = releaseSigning
         }
     }
 }

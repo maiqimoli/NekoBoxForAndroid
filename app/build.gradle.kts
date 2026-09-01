@@ -11,6 +11,12 @@ setupApp()
 
 // Sign release builds with the debug key when requested: ./gradlew assembleRelease -PsignWithDebug=true
 if (project.findProperty("signWithDebug") == "true") {
+    val releaseSigningRequired =
+        providers.gradleProperty("requireReleaseSigning").orNull.equals("true", ignoreCase = true) ||
+                System.getenv("REQUIRE_RELEASE_SIGNING").equals("true", ignoreCase = true)
+    if (releaseSigningRequired) {
+        throw GradleException("signWithDebug cannot be used when release signing is required")
+    }
     android {
         buildTypes {
             getByName("release").signingConfig = signingConfigs.getByName("debug")

@@ -1,156 +1,501 @@
 name: Release Build
+
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release Tag"
+        description: Existing release tag (must match VERSION_NAME and this commit)
         required: true
+        type: string
       publish:
-        description: "Publish: If want ignore"
-        required: false
+        description: Publish the verified APKs to GitHub Releases
+        required: true
+        default: false
+        type: boolean
       play:
-        description: "Play: If want ignore"
-        required: false
+        description: Also build the signed Play bundle
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  ANDROID_BUILD_TOOLS_VERSION: "36.0.0"
+  ANDROID_COMPILE_SDK: "36"
+  GO_VERSION: "1.26.6"
+  JAVA_VERSION: "17"
+  NDK_VERSION: "28.2.13676358"
+
 jobs:
-  libcore:
-    name: Native Build (LibCore)
-    runs-on: ubuntu-latest
+  validate:
+    name: Validate release identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Golang Status
-        run: find buildScript libcore/*.sh | xargs cat | sha1sum > golang_status
-      - name: Libcore Status
-        run: git ls-files libcore | xargs cat | sha1sum > libcore_status
-      - name: LibCore Cache
-        id: cache
-        uses: actions/cache@v4
+      - name: Checkout exact workflow commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          path: |
-            app/libs/libcore.aar
-          key: ${{ hashFiles('.github/workflows/*', 'golang_status', 'libcore_status') }}
-      - name: Install Golang
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v5
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify repository and Gradle wrapper
+        run: bash buildScript/verify_ci_inputs.sh
+
+      - name: Bind tag, commit, and application version
+        id: identity
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          case "$RELEASE_TAG" in
+            ""|[!A-Za-z0-9]*|*[!A-Za-z0-9._+-]*)
+              echo "Invalid release tag: $RELEASE_TAG" >&2
+              exit 1
+              ;;
+          esac
+          if ! git check-ref-format "refs/tags/$RELEASE_TAG"; then
+            echo "Invalid Git tag reference: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          version_count=$(grep -c '^VERSION_NAME=' nb4a.properties || true)
+          if [[ "$version_count" != "1" ]]; then
+            echo "nb4a.properties must contain exactly one VERSION_NAME" >&2
+            exit 1
+          fi
+          version=$(sed -n 's/^VERSION_NAME=//p' nb4a.properties)
+          if [[ -z "$version" || "${RELEASE_TAG#v}" != "$version" ]]; then
+            echo "Tag $RELEASE_TAG does not match VERSION_NAME=$version" >&2
+            exit 1
+          fi
+
+          if ! tag_commit=$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}"); then
+            echo "Tag $RELEASE_TAG does not exist in this checkout" >&2
+            exit 1
+          fi
+          if [[ "$tag_commit" != "$GITHUB_SHA" ]]; then
+            echo "Tag $RELEASE_TAG points to $tag_commit, workflow is running $GITHUB_SHA" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Validated $RELEASE_TAG at $tag_commit (VERSION_NAME=$version)"
+
+  libcore:
+    name: Native build and checks
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          go-version: 1.26.6
-      - name: Install Android NDK
-        run: sdkmanager "ndk;28.2.13676358"
-      - name: Native Build
-        if: steps.cache.outputs.cache-hit != 'true'
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          cache-dependency-path: libcore/go.sum
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install Android SDK components
+        run: >-
+          sdkmanager
+          "platforms;android-${ANDROID_COMPILE_SDK}"
+          "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+          "ndk;${NDK_VERSION}"
+
+      - name: Restore native library cache
+        id: libcore-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: app/libs/libcore.aar
+          key: >-
+            libcore-${{ runner.os }}-java${{ env.JAVA_VERSION }}-go${{ env.GO_VERSION }}-${{
+            env.ANDROID_COMPILE_SDK }}-bt${{ env.ANDROID_BUILD_TOOLS_VERSION }}-ndk${{ env.NDK_VERSION }}-${{
+            hashFiles('run', 'libcore/**/*.go', 'libcore/go.mod', 'libcore/go.sum',
+            'libcore/*.sh', 'buildScript/init/**/*.sh', 'buildScript/lib/core.sh',
+            'buildScript/lib/core/**/*') }}
+
+      - name: Checkout pinned native sources
+        run: bash buildScript/lib/core/get_source.sh
+
+      - name: Build native library
+        if: steps.libcore-cache.outputs.cache-hit != 'true'
         run: ./run lib core
+
       - name: Verify native 16 KB alignment
         run: bash buildScript/check_elf_alignment.sh app/libs/libcore.aar
-      - name: Go tests
-        if: steps.cache.outputs.cache-hit != 'true'
+
+      - name: Run Go tests
         working-directory: libcore
         run: go test ./...
-      - name: Go vulnerability scan
-        if: steps.cache.outputs.cache-hit != 'true'
+
+      - name: Scan Go dependencies
         working-directory: libcore
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+      - name: Upload native library
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          if-no-files-found: error
+          name: libcore-aar
+          path: app/libs/libcore.aar
+          retention-days: 1
+
   build:
-    name: Build OSS APK
-    runs-on: ubuntu-latest
+    name: Build and verify OSS APKs
     needs:
+      - validate
       - libcore
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RELEASE_CERT_SHA256: ${{ vars.RELEASE_CERT_SHA256 }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Android NDK
-        run: sdkmanager "ndk;28.2.13676358"
-      - name: Golang Status
-        run: find buildScript libcore/*.sh | xargs cat | sha1sum > golang_status
-      - name: Libcore Status
-        run: git ls-files libcore | xargs cat | sha1sum > libcore_status
-      - name: LibCore Cache
-        uses: actions/cache@v4
+      - name: Checkout exact release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          path: |
-            app/libs/libcore.aar
-          key: ${{ hashFiles('.github/workflows/*', 'golang_status', 'libcore_status') }}
-      - name: Gradle cache
-        uses: actions/cache@v4
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
-          path: ~/.gradle
-          key: gradle-oss-${{ hashFiles('**/*.gradle.kts') }}
-      - name: Gradle Build
+          cache: gradle
+          cache-dependency-path: |
+            **/*.gradle.kts
+            gradle.properties
+            gradle/wrapper/gradle-wrapper.properties
+            nb4a.properties
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Android SDK components
+        run: >-
+          sdkmanager
+          "platforms;android-${ANDROID_COMPILE_SDK}"
+          "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+          "ndk;${NDK_VERSION}"
+
+      - name: Download native library
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: libcore-aar
+          path: app/libs
+
+      - name: Restore release keystore and require signing secrets
         env:
-          BUILD_PLUGIN: none
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          echo "ndk.dir=${ANDROID_HOME}/ndk/28.2.13676358" >> local.properties
-          export LOCAL_PROPERTIES="${{ secrets.LOCAL_PROPERTIES }}"
+          set -euo pipefail
+          if [[ -z "${RELEASE_KEYSTORE_BASE64:-}" ]]; then
+            echo "Configure the RELEASE_KEYSTORE_BASE64 secret" >&2
+            exit 1
+          fi
+          keystore_path="$RUNNER_TEMP/nb4a-release.keystore"
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          if [[ ! -s "$keystore_path" ]]; then
+            echo "Decoded release keystore is empty" >&2
+            exit 1
+          fi
+          chmod 600 "$keystore_path"
+          bash buildScript/verify_ci_inputs.sh --keystore "$keystore_path"
+          echo "KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
+
+      - name: Test, lint, and build signed APKs
+        env:
+          ALIAS_NAME: ${{ secrets.ALIAS_NAME }}
+          ALIAS_PASS: ${{ secrets.ALIAS_PASS }}
+          BUILD_PLUGIN: none
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+        run: |
+          set -euo pipefail
+          trap 'rm -f -- "$KEYSTORE_PATH" local.properties' EXIT
+          if [[ -z "${KEYSTORE_PASS:-}" || -z "${ALIAS_NAME:-}" || -z "${ALIAS_PASS:-}" ]]; then
+            echo "Configure KEYSTORE_PASS, ALIAS_NAME, and ALIAS_PASS release signing secrets" >&2
+            exit 1
+          fi
+          printf 'sdk.dir=%s\nndk.dir=%s/ndk/%s\n' "$ANDROID_HOME" "$ANDROID_HOME" "$NDK_VERSION" > local.properties
           ./run init action gradle
-          ./gradlew app:testOssDebugUnitTest app:lintOssDebug
-          ./gradlew app:assembleOssRelease
-          APK_FILE=$(find app/build/outputs/apk -name '*arm64-v8a*.apk' | head -n 1)
-          bash buildScript/check_elf_alignment.sh "$APK_FILE"
-          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK_FILE"
-          APK=$(dirname "$APK_FILE")
-          echo "APK=$APK" >> $GITHUB_ENV
-      - uses: actions/upload-artifact@v4
+          ./gradlew --no-daemon app:testOssDebugUnitTest app:lintOssDebug
+          ./gradlew --no-daemon -PrequireReleaseSigning=true app:assembleOssRelease
+          bash buildScript/verify_ci_inputs.sh --archives app/build/outputs/apk/oss/release
+
+      - name: Verify APK signatures and alignment
+        run: |
+          set -euo pipefail
+          readonly apk_dir="app/build/outputs/apk/oss/release"
+          readonly metadata="$apk_dir/output-metadata.json"
+          readonly apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
+          readonly zipalign="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/zipalign"
+
+          expected_digest=$(tr -d ':[:space:]' <<< "${RELEASE_CERT_SHA256:-}" | tr '[:upper:]' '[:lower:]')
+          if [[ ! "$expected_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Configure RELEASE_CERT_SHA256 as the expected release certificate SHA-256" >&2
+            exit 1
+          fi
+
+          if [[ ! -s "$metadata" ]]; then
+            echo "APK output metadata is missing: $metadata" >&2
+            exit 1
+          fi
+          mapfile -t actual_abis < <(jq -r '.elements[] | .filters[]? | select(.filterType == "ABI") | .value' "$metadata" | sort)
+          expected_abis=(arm64-v8a armeabi-v7a x86 x86_64)
+          if [[ "${actual_abis[*]}" != "${expected_abis[*]}" ]]; then
+            echo "Unexpected ABI set: ${actual_abis[*]}" >&2
+            exit 1
+          fi
+
+          mapfile -d '' apks < <(find "$apk_dir" -maxdepth 1 -type f -name '*.apk' -print0 | sort -z)
+          if (( ${#apks[@]} != ${#expected_abis[@]} )); then
+            echo "Expected ${#expected_abis[@]} release APKs, found ${#apks[@]}" >&2
+            exit 1
+          fi
+
+          signer_digest=""
+          for apk in "${apks[@]}"; do
+            filename=$(basename "$apk")
+            if [[ "$filename" == *-unsigned.apk || "$filename" != *"$RELEASE_VERSION"* ]]; then
+              echo "Unexpected release artifact: $filename" >&2
+              exit 1
+            fi
+
+            verification=$("$apksigner" verify --verbose --print-certs "$apk")
+            printf '%s\n' "$verification"
+            current_digest=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<< "$verification" | head -n 1)
+            if [[ -z "$current_digest" ]]; then
+              echo "Could not read signer digest from $filename" >&2
+              exit 1
+            fi
+            current_digest=$(tr '[:upper:]' '[:lower:]' <<< "$current_digest")
+            if [[ "$current_digest" != "$expected_digest" ]]; then
+              echo "Unexpected release signer for $filename" >&2
+              exit 1
+            fi
+            if [[ -n "$signer_digest" && "$current_digest" != "$signer_digest" ]]; then
+              echo "APK signer mismatch for $filename" >&2
+              exit 1
+            fi
+            signer_digest=$current_digest
+
+            application_id=$(apkanalyzer manifest application-id "$apk")
+            version_name=$(apkanalyzer manifest version-name "$apk")
+            expected_application_id=$(sed -n 's/^PACKAGE_NAME=//p' nb4a.properties)
+            if [[ "$application_id" != "$expected_application_id" || "$version_name" != "$RELEASE_VERSION" ]]; then
+              echo "Manifest identity mismatch for $filename: $application_id $version_name" >&2
+              exit 1
+            fi
+
+            bash buildScript/check_elf_alignment.sh "$apk"
+            "$zipalign" -c -P 16 -v 4 "$apk"
+          done
+
+          (cd "$apk_dir" && sha256sum ./*.apk > SHA256SUMS)
+          echo "Signer certificate SHA-256: $signer_digest" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload verified APKs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
+          if-no-files-found: error
           name: APKs
-          path: ${{ env.APK }}
+          path: |
+            app/build/outputs/apk/oss/release/*.apk
+            app/build/outputs/apk/oss/release/SHA256SUMS
+          retention-days: 14
+
   publish:
-    name: Publish Release
-    if: github.event.inputs.publish != 'y'
-    runs-on: ubuntu-latest
-    needs: build
+    name: Publish GitHub Release
+    if: >-
+      ${{ always() && !cancelled() && inputs.publish && needs.validate.result == 'success' &&
+      needs.build.result == 'success' && (!inputs.play || needs.play.result == 'success') }}
+    needs:
+      - validate
+      - build
+      - play
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Donwload Artifacts
-        uses: actions/download-artifact@v4
+      - name: Download verified APKs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: APKs
           path: artifacts
-      - name: Release
+
+      - name: Verify artifact checksums
         run: |
-          wget -O ghr.tar.gz https://github.com/tcnksm/ghr/releases/download/v0.13.0/ghr_v0.13.0_linux_amd64.tar.gz
-          tar -xvf ghr.tar.gz
-          mv ghr*linux_amd64/ghr .
-          mkdir apks
-          find artifacts -name "*.apk" -exec cp {} apks \;
-          ./ghr -delete -t "${{ github.token }}" -n "${{ github.event.inputs.tag }}" "${{ github.event.inputs.tag }}" apks
+          set -euo pipefail
+          checksum_file=$(find artifacts -type f -name SHA256SUMS -print -quit)
+          if [[ -z "$checksum_file" ]]; then
+            echo "SHA256SUMS is missing from the APK artifact" >&2
+            exit 1
+          fi
+          (cd "$(dirname "$checksum_file")" && sha256sum --check "$(basename "$checksum_file")")
+
+      - name: Create GitHub Release
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          tag_ref=$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG")
+          object_type=$(jq -r '.object.type' <<< "$tag_ref")
+          object_sha=$(jq -r '.object.sha' <<< "$tag_ref")
+          for _ in 1 2 3 4 5; do
+            if [[ "$object_type" == "commit" ]]; then
+              break
+            fi
+            if [[ "$object_type" != "tag" ]]; then
+              echo "Tag $RELEASE_TAG resolves to unsupported object type $object_type" >&2
+              exit 1
+            fi
+            tag_object=$(gh api "repos/$GH_REPO/git/tags/$object_sha")
+            object_type=$(jq -r '.object.type' <<< "$tag_object")
+            object_sha=$(jq -r '.object.sha' <<< "$tag_object")
+          done
+          if [[ "$object_type" != "commit" || "$object_sha" != "$GITHUB_SHA" ]]; then
+            echo "Tag $RELEASE_TAG now resolves to $object_type $object_sha, expected commit $GITHUB_SHA" >&2
+            exit 1
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to overwrite it" >&2
+            exit 1
+          fi
+
+          mapfile -d '' apks < <(find artifacts -type f -name '*.apk' -print0 | sort -z)
+          checksum_file=$(find artifacts -type f -name SHA256SUMS -print -quit)
+          if (( ${#apks[@]} == 0 )); then
+            echo "No verified APKs found" >&2
+            exit 1
+          fi
+
+          gh release create "$RELEASE_TAG" "${apks[@]}" "$checksum_file" \
+            --generate-notes \
+            --title "NekoBox $RELEASE_VERSION" \
+            --verify-tag
+
   play:
-    name: Build Play Bundle
-    if: github.event.inputs.play != 'y'
-    runs-on: ubuntu-latest
+    name: Build signed Play bundle
+    if: ${{ inputs.play }}
     needs:
-      - libcore
+      - validate
+      - build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RELEASE_CERT_SHA256: ${{ vars.RELEASE_CERT_SHA256 }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Android NDK
-        run: sdkmanager "ndk;28.2.13676358"
-      - name: Golang Status
-        run: find buildScript libcore/*.sh | xargs cat | sha1sum > golang_status
-      - name: Libcore Status
-        run: git ls-files libcore | xargs cat | sha1sum > libcore_status
-      - name: LibCore Cache
-        uses: actions/cache@v4
+      - name: Checkout exact release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          path: |
-            app/libs/libcore.aar
-          key: ${{ hashFiles('.github/workflows/*', 'golang_status', 'libcore_status') }}
-      - name: Gradle cache
-        uses: actions/cache@v4
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
-          path: ~/.gradle
-          key: gradle-play-${{ hashFiles('**/*.gradle.kts') }}
-      - name: Checkout Library
+          cache: gradle
+          cache-dependency-path: |
+            **/*.gradle.kts
+            gradle.properties
+            gradle/wrapper/gradle-wrapper.properties
+            nb4a.properties
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Android SDK components
+        run: >-
+          sdkmanager
+          "platforms;android-${ANDROID_COMPILE_SDK}"
+          "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+          "ndk;${NDK_VERSION}"
+
+      - name: Download native library
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: libcore-aar
+          path: app/libs
+
+      - name: Restore release keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
-          git submodule update --init 'app/*'
-      - name: Gradle Build
+          set -euo pipefail
+          if [[ -z "${RELEASE_KEYSTORE_BASE64:-}" ]]; then
+            echo "Configure the RELEASE_KEYSTORE_BASE64 secret" >&2
+            exit 1
+          fi
+          keystore_path="$RUNNER_TEMP/nb4a-release.keystore"
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          if [[ ! -s "$keystore_path" ]]; then
+            echo "Decoded release keystore is empty" >&2
+            exit 1
+          fi
+          chmod 600 "$keystore_path"
+          bash buildScript/verify_ci_inputs.sh --keystore "$keystore_path"
+          echo "KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
+
+      - name: Build and verify Play bundle
+        env:
+          ALIAS_NAME: ${{ secrets.ALIAS_NAME }}
+          ALIAS_PASS: ${{ secrets.ALIAS_PASS }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
         run: |
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          echo "ndk.dir=${ANDROID_HOME}/ndk/28.2.13676358" >> local.properties
-          export LOCAL_PROPERTIES="${{ secrets.LOCAL_PROPERTIES }}"
+          set -euo pipefail
+          trap 'rm -f -- "$KEYSTORE_PATH" local.properties' EXIT
+          if [[ -z "${KEYSTORE_PASS:-}" || -z "${ALIAS_NAME:-}" || -z "${ALIAS_PASS:-}" ]]; then
+            echo "Configure KEYSTORE_PASS, ALIAS_NAME, and ALIAS_PASS release signing secrets" >&2
+            exit 1
+          fi
+          printf 'sdk.dir=%s\nndk.dir=%s/ndk/%s\n' "$ANDROID_HOME" "$ANDROID_HOME" "$NDK_VERSION" > local.properties
           ./run init action gradle
-          ./gradlew bundlePlayRelease
-      - uses: actions/upload-artifact@v4
+          ./gradlew --no-daemon -PrequireReleaseSigning=true bundlePlayRelease
+          aab=app/build/outputs/bundle/playRelease/app-play-release.aab
+          bash buildScript/verify_ci_inputs.sh --archives app/build/outputs/bundle/playRelease
+          if ! unzip -Z1 "$aab" | grep -Eq '^META-INF/[^/]+\.(RSA|DSA|EC)$'; then
+            echo "Play bundle does not contain a signing certificate" >&2
+            exit 1
+          fi
+          jarsigner -verify -strict -verbose -certs \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass:env KEYSTORE_PASS \
+            "$aab"
+          expected_digest=$(tr -d ':[:space:]' <<< "${RELEASE_CERT_SHA256:-}" | tr '[:upper:]' '[:lower:]')
+          bundle_digest=$(keytool -printcert -jarfile "$aab" | sed -n 's/^[[:space:]]*SHA256: //p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          if [[ ! "$expected_digest" =~ ^[0-9a-f]{64}$ || "$bundle_digest" != "$expected_digest" ]]; then
+            echo "Play bundle signer does not match RELEASE_CERT_SHA256" >&2
+            exit 1
+          fi
+
+      - name: Upload verified Play bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
+          if-no-files-found: error
           name: AAB
           path: app/build/outputs/bundle/playRelease/app-play-release.aab
+          retention-days: 14

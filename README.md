@@ -1,6 +1,6 @@
 # NekoBox for Android
 
-[![API](https://img.shields.io/badge/API-21%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=21)
+[![API](https://img.shields.io/badge/API-23%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=23)
 [![Releases](https://img.shields.io/github/v/release/MatsuriDayo/NekoBoxForAndroid)](https://github.com/MatsuriDayo/NekoBoxForAndroid/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-orange.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
@@ -61,6 +61,19 @@ supports.
 * sing-box outbound
 
 Only resolving outbound, i.e. nodes, is supported. Information such as diversion rules are ignored.
+
+## Build
+
+Required toolchain:
+
+- JDK 17
+- Go 1.26.6
+- Android SDK / Build Tools 36.0.0
+- Android NDK 28.2.13676358
+
+`./run init action gradle` downloads the pinned GeoIP and Geosite assets and verifies their SHA-256
+digests. Debug builds use the Android debug key. Release CI requires an external keystore plus
+`KEYSTORE_PASS`, `ALIAS_NAME`, and `ALIAS_PASS`, and verifies every APK before publishing it.
 
 ## 捐助 / Donate
 

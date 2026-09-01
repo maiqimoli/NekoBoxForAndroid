@@ -1,86 +1,259 @@
 name: Preview Build
+
 on:
   workflow_dispatch:
-    inputs:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ANDROID_BUILD_TOOLS_VERSION: "36.0.0"
+  ANDROID_COMPILE_SDK: "36"
+  GO_VERSION: "1.26.6"
+  JAVA_VERSION: "17"
+  NDK_VERSION: "28.2.13676358"
+
 jobs:
   libcore:
-    name: Native Build (LibCore)
-    runs-on: ubuntu-latest
+    name: Native build and checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Golang Status
-        run: find buildScript libcore/*.sh | xargs cat | sha1sum > golang_status
-      - name: Libcore Status
-        run: git ls-files libcore | xargs cat | sha1sum > libcore_status
-      - name: LibCore Cache
-        id: cache
-        uses: actions/cache@v4
+      - name: Checkout exact preview commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          path: |
-            app/libs/libcore.aar
-          key: ${{ hashFiles('.github/workflows/*', 'golang_status', 'libcore_status') }}
-      - name: Install Golang
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v5
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify repository and Gradle wrapper
+        run: bash buildScript/verify_ci_inputs.sh
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
-          go-version: 1.26.6
-      - name: Install Android NDK
-        run: sdkmanager "ndk;28.2.13676358"
-      - name: Native Build
-        if: steps.cache.outputs.cache-hit != 'true'
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          cache-dependency-path: libcore/go.sum
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install Android SDK components
+        run: >-
+          sdkmanager
+          "platforms;android-${ANDROID_COMPILE_SDK}"
+          "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+          "ndk;${NDK_VERSION}"
+
+      - name: Restore native library cache
+        id: libcore-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: app/libs/libcore.aar
+          key: >-
+            libcore-${{ runner.os }}-java${{ env.JAVA_VERSION }}-go${{ env.GO_VERSION }}-${{
+            env.ANDROID_COMPILE_SDK }}-bt${{ env.ANDROID_BUILD_TOOLS_VERSION }}-ndk${{ env.NDK_VERSION }}-${{
+            hashFiles('run', 'libcore/**/*.go', 'libcore/go.mod', 'libcore/go.sum',
+            'libcore/*.sh', 'buildScript/init/**/*.sh', 'buildScript/lib/core.sh',
+            'buildScript/lib/core/**/*') }}
+
+      - name: Checkout pinned native sources
+        run: bash buildScript/lib/core/get_source.sh
+
+      - name: Build native library
+        if: steps.libcore-cache.outputs.cache-hit != 'true'
         run: ./run lib core
+
       - name: Verify native 16 KB alignment
         run: bash buildScript/check_elf_alignment.sh app/libs/libcore.aar
-      - name: Go tests
-        if: steps.cache.outputs.cache-hit != 'true'
+
+      - name: Run Go tests
         working-directory: libcore
         run: go test ./...
-      - name: Go vulnerability scan
-        if: steps.cache.outputs.cache-hit != 'true'
+
+      - name: Scan Go dependencies
         working-directory: libcore
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+      - name: Upload native library
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          if-no-files-found: error
+          name: libcore-aar
+          path: app/libs/libcore.aar
+          retention-days: 1
+
   build:
-    name: Build OSS APK
-    runs-on: ubuntu-latest
-    needs:
-      - libcore
+    name: Build and verify preview APKs
+    needs: libcore
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RELEASE_CERT_SHA256: ${{ vars.RELEASE_CERT_SHA256 }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Android NDK
-        run: sdkmanager "ndk;28.2.13676358"
-      - name: Golang Status
-        run: find buildScript libcore/*.sh | xargs cat | sha1sum > golang_status
-      - name: Libcore Status
-        run: git ls-files libcore | xargs cat | sha1sum > libcore_status
-      - name: LibCore Cache
-        uses: actions/cache@v4
+      - name: Checkout exact preview commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          path: |
-            app/libs/libcore.aar
-          key: ${{ hashFiles('.github/workflows/*', 'golang_status', 'libcore_status') }}
-      - name: Gradle cache
-        uses: actions/cache@v4
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
-          path: ~/.gradle
-          key: gradle-oss-${{ hashFiles('**/*.gradle.kts') }}
-      - name: Gradle Build
+          cache: gradle
+          cache-dependency-path: |
+            **/*.gradle.kts
+            gradle.properties
+            gradle/wrapper/gradle-wrapper.properties
+            nb4a.properties
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Android SDK components
+        run: >-
+          sdkmanager
+          "platforms;android-${ANDROID_COMPILE_SDK}"
+          "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+          "ndk;${NDK_VERSION}"
+
+      - name: Download native library
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: libcore-aar
+          path: app/libs
+
+      - name: Restore release keystore and read preview version
         env:
-          BUILD_PLUGIN: none
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          echo "ndk.dir=${ANDROID_HOME}/ndk/28.2.13676358" >> local.properties
-          export LOCAL_PROPERTIES="${{ secrets.LOCAL_PROPERTIES }}"
+          set -euo pipefail
+          if [[ -z "${RELEASE_KEYSTORE_BASE64:-}" ]]; then
+            echo "Configure the RELEASE_KEYSTORE_BASE64 secret" >&2
+            exit 1
+          fi
+
+          keystore_path="$RUNNER_TEMP/nb4a-release.keystore"
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          if [[ ! -s "$keystore_path" ]]; then
+            echo "Decoded release keystore is empty" >&2
+            exit 1
+          fi
+          chmod 600 "$keystore_path"
+          bash buildScript/verify_ci_inputs.sh --keystore "$keystore_path"
+          echo "KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
+
+          preview_version=$(sed -n 's/^PRE_VERSION_NAME=//p' nb4a.properties)
+          app_version=$(sed -n 's/^VERSION_NAME=//p' nb4a.properties)
+          if [[ -z "$preview_version" || -z "$app_version" ]]; then
+            echo "PRE_VERSION_NAME or VERSION_NAME is missing" >&2
+            exit 1
+          fi
+          echo "PREVIEW_VERSION=$preview_version" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$app_version" >> "$GITHUB_ENV"
+
+      - name: Test, lint, and build signed preview APKs
+        env:
+          ALIAS_NAME: ${{ secrets.ALIAS_NAME }}
+          ALIAS_PASS: ${{ secrets.ALIAS_PASS }}
+          BUILD_PLUGIN: none
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+        run: |
+          set -euo pipefail
+          trap 'rm -f -- "$KEYSTORE_PATH" local.properties' EXIT
+          if [[ -z "${KEYSTORE_PASS:-}" || -z "${ALIAS_NAME:-}" || -z "${ALIAS_PASS:-}" ]]; then
+            echo "Configure KEYSTORE_PASS, ALIAS_NAME, and ALIAS_PASS release signing secrets" >&2
+            exit 1
+          fi
+          printf 'sdk.dir=%s\nndk.dir=%s/ndk/%s\n' "$ANDROID_HOME" "$ANDROID_HOME" "$NDK_VERSION" > local.properties
           ./run init action gradle
-          ./gradlew app:testPreviewDebugUnitTest app:lintPreviewDebug
-          ./gradlew app:assemblePreviewRelease
-          APK_FILE=$(find app/build/outputs/apk -name '*arm64-v8a*.apk' | head -n 1)
-          bash buildScript/check_elf_alignment.sh "$APK_FILE"
-          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK_FILE"
-          APK=$(dirname "$APK_FILE")
-          echo "APK=$APK" >> $GITHUB_ENV
-      - uses: actions/upload-artifact@v4
+          ./gradlew --no-daemon app:testPreviewDebugUnitTest app:lintPreviewDebug
+          ./gradlew --no-daemon -PrequireReleaseSigning=true app:assemblePreviewRelease
+          bash buildScript/verify_ci_inputs.sh --archives app/build/outputs/apk/preview/release
+
+      - name: Verify APK signatures and alignment
+        run: |
+          set -euo pipefail
+          readonly apk_dir="app/build/outputs/apk/preview/release"
+          readonly metadata="$apk_dir/output-metadata.json"
+          readonly apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
+          readonly zipalign="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/zipalign"
+
+          expected_digest=$(tr -d ':[:space:]' <<< "${RELEASE_CERT_SHA256:-}" | tr '[:upper:]' '[:lower:]')
+          if [[ ! "$expected_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Configure RELEASE_CERT_SHA256 as the expected release certificate SHA-256" >&2
+            exit 1
+          fi
+
+          if [[ ! -s "$metadata" ]]; then
+            echo "APK output metadata is missing: $metadata" >&2
+            exit 1
+          fi
+          mapfile -t actual_abis < <(jq -r '.elements[] | .filters[]? | select(.filterType == "ABI") | .value' "$metadata" | sort)
+          expected_abis=(arm64-v8a armeabi-v7a x86 x86_64)
+          if [[ "${actual_abis[*]}" != "${expected_abis[*]}" ]]; then
+            echo "Unexpected ABI set: ${actual_abis[*]}" >&2
+            exit 1
+          fi
+
+          mapfile -d '' apks < <(find "$apk_dir" -maxdepth 1 -type f -name '*.apk' -print0 | sort -z)
+          if (( ${#apks[@]} != ${#expected_abis[@]} )); then
+            echo "Expected ${#expected_abis[@]} preview APKs, found ${#apks[@]}" >&2
+            exit 1
+          fi
+
+          signer_digest=""
+          for apk in "${apks[@]}"; do
+            filename=$(basename "$apk")
+            if [[ "$filename" == *-unsigned.apk || "$filename" != *"$PREVIEW_VERSION"* ]]; then
+              echo "Unexpected preview artifact: $filename" >&2
+              exit 1
+            fi
+
+            verification=$("$apksigner" verify --verbose --print-certs "$apk")
+            printf '%s\n' "$verification"
+            current_digest=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<< "$verification" | head -n 1)
+            if [[ -z "$current_digest" ]]; then
+              echo "Could not read signer digest from $filename" >&2
+              exit 1
+            fi
+            current_digest=$(tr '[:upper:]' '[:lower:]' <<< "$current_digest")
+            if [[ "$current_digest" != "$expected_digest" ]]; then
+              echo "Unexpected release signer for $filename" >&2
+              exit 1
+            fi
+            if [[ -n "$signer_digest" && "$current_digest" != "$signer_digest" ]]; then
+              echo "APK signer mismatch for $filename" >&2
+              exit 1
+            fi
+            signer_digest=$current_digest
+
+            application_id=$(apkanalyzer manifest application-id "$apk")
+            version_name=$(apkanalyzer manifest version-name "$apk")
+            expected_application_id=$(sed -n 's/^PACKAGE_NAME=//p' nb4a.properties)
+            if [[ "$application_id" != "$expected_application_id" || "$version_name" != "$APP_VERSION" ]]; then
+              echo "Manifest identity mismatch for $filename: $application_id $version_name" >&2
+              exit 1
+            fi
+
+            bash buildScript/check_elf_alignment.sh "$apk"
+            "$zipalign" -c -P 16 -v 4 "$apk"
+          done
+
+          (cd "$apk_dir" && sha256sum ./*.apk > SHA256SUMS)
+          echo "Signer certificate SHA-256: $signer_digest" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload verified preview APKs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
+          if-no-files-found: error
           name: APKs
-          path: ${{ env.APK }}
+          path: |
+            app/build/outputs/apk/preview/release/*.apk
+            app/build/outputs/apk/preview/release/SHA256SUMS
+          retention-days: 14
