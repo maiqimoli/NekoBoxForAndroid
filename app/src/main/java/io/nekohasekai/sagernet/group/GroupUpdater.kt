@@ -62,15 +62,15 @@ abstract class GroupUpdater {
 
                 lookupJobs.add(launch(lookupDispatcher) {
                     try {
+                        val underlyingNetwork = SagerNet.underlyingNetwork
                         val results = if (
-                            SagerNet.underlyingNetwork != null &&
+                            underlyingNetwork != null &&
                             DataStore.enableFakeDns &&
                             DataStore.serviceState.started &&
                             DataStore.serviceMode == Key.MODE_VPN
                         ) {
                             // FakeDNS
-                            SagerNet.underlyingNetwork!!
-                                .getAllByName(profile.serverAddress)
+                            underlyingNetwork.getAllByName(profile.serverAddress)
                                 .filterNotNull()
                         } else {
                             // System DNS is enough (when VPN connected, it uses v2ray-core)
@@ -135,29 +135,30 @@ abstract class GroupUpdater {
 
         suspend fun executeUpdate(proxyGroup: ProxyGroup, byUser: Boolean): Boolean {
             return coroutineScope {
-                if (!updating.add(proxyGroup.id)) cancel()
+                if (!updating.add(proxyGroup.id)) return@coroutineScope false
                 GroupManager.postReload(proxyGroup.id)
 
-                val subscription = proxyGroup.subscription!!
-                val connected = DataStore.serviceState.connected
-                val userInterface = GroupManager.userInterface
-
-                if (byUser && (subscription.link?.startsWith("http://") == true || subscription.updateWhenConnectedOnly) && !connected) {
-                    if (userInterface == null || !userInterface.confirm(app.getString(R.string.update_subscription_warning))) {
-                        finishUpdate(proxyGroup)
-                        cancel()
-                        return@coroutineScope true
-                    }
-                }
-
                 try {
+                    val subscription = proxyGroup.subscription!!
+                    val connected = DataStore.serviceState.connected
+                    val userInterface = GroupManager.userInterface
+
+                    if (byUser && (subscription.link?.startsWith("http://") == true || subscription.updateWhenConnectedOnly) && !connected) {
+                        if (userInterface == null || !userInterface.confirm(app.getString(R.string.update_subscription_warning))) {
+                            return@coroutineScope true
+                        }
+                    }
+
                     RawUpdater.doUpdate(proxyGroup, subscription, userInterface, byUser)
                     true
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
                     Logs.w(e)
-                    userInterface?.onUpdateFailure(proxyGroup, e.readableMessage)
-                    finishUpdate(proxyGroup)
+                    GroupManager.userInterface?.onUpdateFailure(proxyGroup, e.readableMessage)
                     false
+                } finally {
+                    finishUpdate(proxyGroup)
                 }
             }
         }
