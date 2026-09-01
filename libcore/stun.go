@@ -20,9 +20,9 @@ func StunTest(server string) *StunResult {
 	// Old NAT Type Test
 	client := stun.NewClient()
 	client.SetServerAddr(server)
-	nat, host, err, fakeFullCone := client.Discover()
-	if err != nil {
-		text += fmt.Sprintln("Discover Error:", err.Error())
+	nat, host, discoverErr, fakeFullCone := client.Discover()
+	if discoverErr != nil {
+		text += fmt.Sprintln("Discover Error:", discoverErr.Error())
 	}
 
 	if fakeFullCone {
@@ -38,9 +38,9 @@ func StunTest(server string) *StunResult {
 
 	// New NAT Test
 
-	natBehavior, err := client.BehaviorTest()
-	if err != nil {
-		text += fmt.Sprintln("BehaviorTest Error:", err.Error())
+	natBehavior, behaviorErr := client.BehaviorTest()
+	if behaviorErr != nil {
+		text += fmt.Sprintln("BehaviorTest Error:", behaviorErr.Error())
 	}
 
 	if natBehavior != nil {
@@ -49,7 +49,7 @@ func StunTest(server string) *StunResult {
 		text += fmt.Sprintln("Normal NAT Type:", natBehavior.NormalType())
 	}
 
-	ret.Success = true
+	ret.Success = (discoverErr == nil && host != nil) || (behaviorErr == nil && natBehavior != nil)
 	ret.Text = strings.TrimRight(text, "\n")
 	return ret
 }

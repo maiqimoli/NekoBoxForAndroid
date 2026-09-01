@@ -54,17 +54,30 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 	pkt.transID = packetBytes[4:20]
 	pkt.attributes = make([]attribute, 0, 10)
 	packetBytes = packetBytes[20:]
-	for pos := uint16(0); pos+4 < uint16(len(packetBytes)); {
+	if int(pkt.length) != len(packetBytes) {
+		return nil, errors.New("Received data length mismatch.")
+	}
+	for pos := 0; pos < len(packetBytes); {
+		if len(packetBytes)-pos < 4 {
+			return nil, errors.New("Received attribute header is truncated.")
+		}
 		types := binary.BigEndian.Uint16(packetBytes[pos : pos+2])
 		length := binary.BigEndian.Uint16(packetBytes[pos+2 : pos+4])
-		end := pos + 4 + length
-		if end < pos+4 || end > uint16(len(packetBytes)) {
+		valueEnd := pos + 4 + int(length)
+		attributeEnd := pos + 4 + int(align(length))
+		if valueEnd > len(packetBytes) || attributeEnd > len(packetBytes) {
 			return nil, errors.New("Received data format mismatch.")
 		}
-		value := packetBytes[pos+4 : end]
+		value := packetBytes[pos+4 : valueEnd]
+		if isAddressAttribute(types) {
+			expectedLength, valid := addressAttributeLength(value)
+			if !valid || len(value) != expectedLength {
+				return nil, errors.New("Received address attribute has an invalid family or length.")
+			}
+		}
 		attribute := newAttribute(types, value)
-		pkt.addAttribute(*attribute)
-		pos += align(length) + 4
+		pkt.attributes = append(pkt.attributes, *attribute)
+		pos = attributeEnd
 	}
 	return pkt, nil
 }

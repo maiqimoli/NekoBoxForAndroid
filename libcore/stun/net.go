@@ -96,8 +96,15 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 			}
 			c.logger.Info("\n" + hex.Dump(packetBytes[0:length]))
 			resp := newResponse(p, conn)
-			resp.serverAddr = newHostFromStr(raddr.String())
-			return resp, err
+			if raddr == nil {
+				return nil, errors.New("response has no source address")
+			}
+			serverAddr, err := newHostFromStr(raddr.String())
+			if err != nil {
+				return nil, err
+			}
+			resp.serverAddr = serverAddr
+			return resp, nil
 		}
 	}
 	return nil, nil

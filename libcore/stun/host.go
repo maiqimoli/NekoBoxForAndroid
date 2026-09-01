@@ -15,6 +15,7 @@
 package stun
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 )
@@ -26,10 +27,13 @@ type Host struct {
 	port   uint16
 }
 
-func newHostFromStr(s string) *Host {
+func newHostFromStr(s string) (*Host, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", s)
 	if err != nil {
-		return nil
+		return nil, err
+	}
+	if udpAddr == nil || udpAddr.IP == nil {
+		return nil, fmt.Errorf("address %q has no IP", s)
 	}
 	host := new(Host)
 	if udpAddr.IP.To4() != nil {
@@ -39,7 +43,7 @@ func newHostFromStr(s string) *Host {
 	}
 	host.ip = udpAddr.IP.String()
 	host.port = uint16(udpAddr.Port)
-	return host
+	return host, nil
 }
 
 // Family returns the family type of a host (IPv4 or IPv6).

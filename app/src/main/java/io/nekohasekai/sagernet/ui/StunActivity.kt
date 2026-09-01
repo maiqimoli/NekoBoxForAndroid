@@ -3,11 +3,13 @@ package io.nekohasekai.sagernet.ui
 import android.os.Bundle
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.databinding.LayoutStunBinding
-import io.nekohasekai.sagernet.ktx.onMainDispatcher
 import io.nekohasekai.sagernet.ktx.readableMessage
-import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import libcore.Libcore
 
 class StunActivity : ThemedActivity() {
@@ -32,33 +34,29 @@ class StunActivity : ThemedActivity() {
 
     fun doTest() {
         binding.waitLayout.isVisible = true
-        runOnDefaultDispatcher {
+        val server = binding.natStunServer.text.toString()
+        lifecycleScope.launch {
             val result = try {
-                val _result = Libcore.stunTest(binding.natStunServer.text.toString())
-                if (_result!!.success) {
-                    _result.text
-                } else {
-                    throw Exception(_result.text)
+                withContext(Dispatchers.Default) {
+                    val stunResult = Libcore.stunTest(server)
+                    if (stunResult!!.success) {
+                        stunResult.text
+                    } else {
+                        throw Exception(stunResult.text)
+                    }
                 }
             } catch (e: Exception) {
-                onMainDispatcher {
-                    AlertDialog.Builder(this@StunActivity)
-                        .setTitle(R.string.error_title)
-                        .setMessage(e.readableMessage)
-                        .setPositiveButton(android.R.string.ok) { _, _ ->
-                            finish()
-                        }
-                        .setOnCancelListener {
-                            finish()
-                        }
-                        .runCatching { show() }
-                }
-                return@runOnDefaultDispatcher
-            }
-            onMainDispatcher {
                 binding.waitLayout.isVisible = false
-                binding.natResult.text = result
+                AlertDialog.Builder(this@StunActivity)
+                    .setTitle(R.string.error_title)
+                    .setMessage(e.readableMessage)
+                    .setPositiveButton(android.R.string.ok) { _, _ -> finish() }
+                    .setOnCancelListener { finish() }
+                    .runCatching { show() }
+                return@launch
             }
+            binding.waitLayout.isVisible = false
+            binding.natResult.text = result
         }
     }
 

@@ -20,6 +20,9 @@ import (
 )
 
 func (c *Client) sendWithLog(conn net.PacketConn, addr *net.UDPAddr, changeIP bool, changePort bool) (*response, error) {
+	if addr == nil {
+		return nil, errors.New("server address is nil")
+	}
 	c.logger.Debugln("Send To:", addr)
 	resp, err := c.sendBindingReq(conn, addr, changeIP, changePort)
 	if err != nil {
@@ -37,6 +40,9 @@ func (c *Client) sendWithLog(conn net.PacketConn, addr *net.UDPAddr, changeIP bo
 
 // Make sure IP and port  have or haven't change
 func addrCompare(host *Host, addr *net.UDPAddr, IPChange, portChange bool) bool {
+	if host == nil || addr == nil || addr.IP == nil {
+		return false
+	}
 	isIPChange := host.IP() != addr.IP.String()
 	isPortChange := host.Port() != uint16(addr.Port)
 	return isIPChange == IPChange && isPortChange == portChange
