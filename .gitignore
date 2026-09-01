@@ -14,6 +14,15 @@ local.properties
 /app/libs/
 /app/src/main/assets/sing-box
 /service_account_credentials.json
+/release.keystore
+/release.keystore.local
+/device-configuration.db
+/device-current.png
+/device-sager_net.db
+/device-window.xml
+/rapid-switch-3s.png
+/rapid-switch-500ms.png
+/rapid-switch-log.txt
 jniLibs/
 /library/libcore_build/
 .idea/deploymentTargetDropDown.xml
