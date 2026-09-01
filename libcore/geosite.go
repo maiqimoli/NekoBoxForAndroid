@@ -1,7 +1,9 @@
 package libcore
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 
 	geosites "github.com/sagernet/sing-box/common/geosite"
@@ -43,12 +45,27 @@ func (g *geosite) Rules(code string) ([]option.HeadlessRule, error) {
 	}, nil
 }
 
+func (g *geosite) Close() error {
+	if g == nil || g.geositeReader == nil {
+		return nil
+	}
+	closer, ok := g.geositeReader.Upstream().(io.Closer)
+	if !ok {
+		return nil
+	}
+	return closer.Close()
+}
+
 func init() {
 	nekoutils.GetGeoSiteHeadlessRules = func(name string) ([]option.HeadlessRule, error) {
+		if err := WaitForCore(); err != nil {
+			return nil, fmt.Errorf("wait for core initialization: %w", err)
+		}
 		g := new(geosite)
 		if err := g.Open(filepath.Join(externalAssetsPath, "geosite.db")); err != nil {
 			return nil, err
 		}
-		return g.Rules(name)
+		rules, rulesErr := g.Rules(name)
+		return rules, errors.Join(rulesErr, g.Close())
 	}
 }

@@ -2,4 +2,4 @@
 
 package libcore
 
-func extractAssets() {}
+func extractAssets() error { return nil }

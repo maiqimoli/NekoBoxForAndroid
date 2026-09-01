@@ -4,6 +4,7 @@ package libcore
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
 	"strings"
 	"sync"
@@ -55,6 +56,9 @@ func (p *platformLocalDNSTransport) Close() error {
 }
 
 func (p *platformLocalDNSTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
+	if message == nil || len(message.Question) == 0 {
+		return nil, E.New("DNS message has no question")
+	}
 	if p.raw && rawQueryFunc != nil {
 		// Raw - Android 10 及以上才有
 
@@ -140,11 +144,21 @@ func (c *ExchangeContext) OnCancel(callback Func) {
 }
 
 func (c *ExchangeContext) Success(result string) {
-	c.addresses = common.Map(common.Filter(strings.Split(result, "\n"), func(it string) bool {
-		return !common.IsEmpty(it)
-	}), func(it string) netip.Addr {
-		return M.ParseSocksaddrHostPort(it, 0).Unwrap().Addr
+	defer c.done()
+	entries := common.Filter(strings.Split(result, "\n"), func(it string) bool {
+		return !common.IsEmpty(strings.TrimSpace(it))
 	})
+	c.addresses = make([]netip.Addr, 0, len(entries))
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		address := M.ParseSocksaddrHostPort(entry, 0).Unwrap().Addr
+		if !address.IsValid() {
+			c.addresses = nil
+			c.error = fmt.Errorf("invalid DNS address %q", entry)
+			return
+		}
+		c.addresses = append(c.addresses, address)
+	}
 }
 
 func (c *ExchangeContext) RawSuccess(result []byte) {

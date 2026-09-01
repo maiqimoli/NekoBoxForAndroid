@@ -1,6 +1,7 @@
 package libcore
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -37,6 +38,9 @@ func (g *geoip) Rules(countryCode string) ([]option.HeadlessRule, error) {
 		}
 		countryMap[nextCountryCode] = append(countryMap[nextCountryCode], ipNet)
 	}
+	if err := networks.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate networks: %w", err)
+	}
 
 	ipNets := countryMap[strings.ToLower(countryCode)]
 
@@ -60,11 +64,15 @@ func (g *geoip) Rules(countryCode string) ([]option.HeadlessRule, error) {
 
 func init() {
 	nekoutils.GetGeoIPHeadlessRules = func(name string) ([]option.HeadlessRule, error) {
+		if err := WaitForCore(); err != nil {
+			return nil, fmt.Errorf("wait for core initialization: %w", err)
+		}
 		g := new(geoip)
 		if err := g.Open(filepath.Join(externalAssetsPath, "geoip.db")); err != nil {
 			return nil, err
 		}
-		defer g.geoipReader.Close()
-		return g.Rules(name)
+		rules, rulesErr := g.Rules(name)
+		closeErr := g.geoipReader.Close()
+		return rules, errors.Join(rulesErr, closeErr)
 	}
 }
