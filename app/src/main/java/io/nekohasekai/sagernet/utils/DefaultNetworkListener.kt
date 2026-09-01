@@ -20,6 +20,7 @@ import kotlinx.coroutines.ObsoleteCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.actor
+import kotlinx.coroutines.launch
 import java.net.UnknownHostException
 
 object DefaultNetworkListener {
@@ -41,8 +42,6 @@ object DefaultNetworkListener {
     }
 
     private val listenerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    // Network callbacks can burst during Wi-Fi/VPN handover. Keep a bounded queue so
-    // a broken listener cannot grow memory without limit.
     private val networkActor = listenerScope.actor<NetworkMessage>(capacity = Channel.BUFFERED) {
         val listeners = mutableMapOf<Any, (Network?) -> Unit>()
         var network: Network? = null
@@ -135,8 +134,12 @@ object DefaultNetworkListener {
         override fun onLost(network: Network) = send(NetworkMessage.Lost(network))
 
         private fun send(message: NetworkMessage) {
-            if (networkActor.trySend(message).isFailure) {
-                Logs.w("Default network event dropped: ${message.javaClass.simpleName}")
+            if (networkActor.trySend(message).isSuccess || message is NetworkMessage.Update) return
+            // Put/Lost transitions are rare and must survive a temporary burst of updates.
+            listenerScope.launch {
+                runCatching { networkActor.send(message) }.onFailure {
+                    Logs.w("Default network listener is closed: ${message.javaClass.simpleName}")
+                }
             }
         }
     }

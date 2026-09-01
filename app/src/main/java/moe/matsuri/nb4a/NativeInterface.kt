@@ -7,7 +7,9 @@ import android.os.Build
 import android.os.Build.VERSION_CODES
 import androidx.annotation.RequiresApi
 import io.nekohasekai.sagernet.SagerNet
+import io.nekohasekai.sagernet.bg.BaseService
 import io.nekohasekai.sagernet.bg.ServiceNotification
+import io.nekohasekai.sagernet.bg.proto.ProxyInstance
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.ktx.Logs
@@ -15,9 +17,17 @@ import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.utils.PackageCache
 import libcore.BoxPlatformInterface
-import libcore.Libcore
 import libcore.NB4AInterface
 import java.net.InetSocketAddress
+
+private data class SelectorLifecycleSnapshot(
+    val proxy: ProxyInstance,
+    val notification: ServiceNotification,
+    val instanceToken: Long,
+    val startGeneration: Long,
+    val stoppingGeneration: Long,
+    val selectorCallbackGeneration: Long,
+)
 
 class NativeInterface : BoxPlatformInterface, NB4AInterface {
 
@@ -82,27 +92,82 @@ class NativeInterface : BoxPlatformInterface, NB4AInterface {
         return DataStore.rulesProvider == 0
     }
 
-    override fun selector_OnProxySelected(selectorTag: String, tag: String) {
+    override fun selector_OnProxySelected(instanceToken: Long, selectorTag: String, tag: String) {
+        if (instanceToken == 0L) return
         if (selectorTag != "proxy") {
             Logs.d("other selector: $selectorTag")
             return
         }
-        Libcore.resetAllConnections(true)
-        DataStore.baseService?.apply {
-            runOnDefaultDispatcher {
-                val id = data.proxy!!.config.profileTagMap
-                    .filterValues { it == tag }.keys.firstOrNull() ?: -1
-                val ent = SagerDatabase.proxyDao.getById(id) ?: return@runOnDefaultDispatcher
-                // traffic & title
-                data.proxy?.apply {
-                    looper?.selectMain(id)
-                    displayProfileName = ServiceNotification.genTitle(ent)
-                    data.notification?.postNotificationTitle(displayProfileName)
+        val service = DataStore.baseService ?: return
+        val data = service.data
+        val snapshot = synchronized(data.stoppingLock) {
+            if (DataStore.baseService !== service) return
+            val proxy = data.proxy ?: return
+            val notification = data.notification ?: return
+            if (data.state != BaseService.State.Connected ||
+                data.stoppingDeferred?.isActive == true ||
+                data.hardStopRequested ||
+                !proxy.isInitialized()
+            ) return
+            if (proxy.box.instanceToken() != instanceToken) return
+            data.selectorCallbackGeneration += 1L
+            SelectorLifecycleSnapshot(
+                proxy = proxy,
+                notification = notification,
+                instanceToken = instanceToken,
+                startGeneration = data.startGeneration,
+                stoppingGeneration = data.stoppingGeneration,
+                selectorCallbackGeneration = data.selectorCallbackGeneration,
+            )
+        }
+
+        runOnDefaultDispatcher {
+            fun lifecycleIsCurrentLocked(): Boolean =
+                DataStore.baseService === service &&
+                        data.proxy === snapshot.proxy &&
+                        data.notification === snapshot.notification &&
+                        data.state == BaseService.State.Connected &&
+                        data.stoppingDeferred?.isActive != true &&
+                        !data.hardStopRequested &&
+                        snapshot.proxy.isInitialized() &&
+                        snapshot.proxy.box.instanceToken() == snapshot.instanceToken &&
+                        data.startGeneration == snapshot.startGeneration &&
+                        data.stoppingGeneration == snapshot.stoppingGeneration &&
+                        data.selectorCallbackGeneration == snapshot.selectorCallbackGeneration
+
+            fun lifecycleIsCurrent(): Boolean = synchronized(data.stoppingLock) {
+                lifecycleIsCurrentLocked()
+            }
+
+            if (!lifecycleIsCurrent()) return@runOnDefaultDispatcher
+            val id = snapshot.proxy.config.profileTagMap
+                .filterValues { it == tag }.keys.firstOrNull() ?: -1
+            val ent = SagerDatabase.proxyDao.getById(id) ?: return@runOnDefaultDispatcher
+            if (!lifecycleIsCurrent()) return@runOnDefaultDispatcher
+            val groupName = if (DataStore.showGroupInNotification) {
+                SagerDatabase.groupDao.getById(ent.groupId)?.displayName()
+            } else {
+                null
+            }
+            if (!lifecycleIsCurrent()) return@runOnDefaultDispatcher
+
+            if (snapshot.proxy.looper?.selectMain(id, ::lifecycleIsCurrent) == false) {
+                return@runOnDefaultDispatcher
+            }
+            if (!lifecycleIsCurrent()) return@runOnDefaultDispatcher
+            val title = ServiceNotification.genTitle(ent, groupName)
+            val titleCommitted = synchronized(data.stoppingLock) {
+                if (!lifecycleIsCurrentLocked()) {
+                    false
+                } else {
+                    snapshot.proxy.displayProfileName = title
+                    snapshot.notification.postNotificationTitle(title)
                 }
-                // post binder
-                data.binder.broadcast { b ->
-                    b.cbSelectorUpdate(id)
-                }
+            }
+            if (!titleCommitted) return@runOnDefaultDispatcher
+
+            data.binder.broadcast { callback ->
+                if (lifecycleIsCurrent()) callback.cbSelectorUpdate(id)
             }
         }
     }

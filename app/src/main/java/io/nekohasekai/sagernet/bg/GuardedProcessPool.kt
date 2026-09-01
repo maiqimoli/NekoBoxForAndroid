@@ -16,6 +16,8 @@ import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.utils.Commandline
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import libcore.Libcore
 import java.io.File
 import java.io.IOException
@@ -107,6 +109,15 @@ class GuardedProcessPool(private val onFatal: suspend (IOException) -> Unit) : C
 
     override val coroutineContext = Dispatchers.Main.immediate + Job()
     var processCount = 0
+    private val closeMutex = Mutex()
+    private val shutdownFailures = mutableListOf<Throwable>()
+    private var closed = false
+
+    private fun recordShutdownFailure(error: Throwable) {
+        synchronized(shutdownFailures) {
+            shutdownFailures += error
+        }
+    }
 
     @MainThread
     fun start(
@@ -117,14 +128,42 @@ class GuardedProcessPool(private val onFatal: suspend (IOException) -> Unit) : C
         Logs.i("start process: ${Commandline.toString(cmd)}")
         Guard(cmd, env).apply {
             start() // if start fails, IOException will be thrown directly
-            launch { looper(onRestartCallback) }
+            launch {
+                try {
+                    looper(onRestartCallback)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    recordShutdownFailure(error)
+                    Logs.w("Failed to stop guarded process cleanly", error)
+                }
+            }
         }
         processCount += 1
     }
 
+    suspend fun closeAndJoin() = closeMutex.withLock {
+        if (!closed) {
+            val rootJob = checkNotNull(coroutineContext[Job])
+            rootJob.cancelAndJoin()
+            closed = true
+        }
+
+        val failures = synchronized(shutdownFailures) { shutdownFailures.toList() }
+        if (failures.isNotEmpty()) {
+            val failure = failures.first()
+            failures.drop(1).forEach { next ->
+                if (failure !== next) failure.addSuppressed(next)
+            }
+            throw failure
+        }
+    }
+
     @MainThread
     fun close(scope: CoroutineScope) {
-        cancel()
-        coroutineContext[Job]!!.also { job -> scope.launch { job.cancelAndJoin() } }
+        scope.launch {
+            runCatching { closeAndJoin() }
+                .onFailure { Logs.w("Failed to close guarded process pool", it) }
+        }
     }
 }

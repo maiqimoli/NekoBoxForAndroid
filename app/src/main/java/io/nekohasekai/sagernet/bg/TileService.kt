@@ -7,6 +7,12 @@ import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.aidl.ISagerNetService
 import io.nekohasekai.sagernet.database.SagerDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.service.quicksettings.TileService as BaseTileService
 
 @RequiresApi(24)
@@ -17,10 +23,14 @@ class TileService : BaseTileService(), SagerConnection.Callback {
         Icon.createWithResource(this, R.drawable.ic_service_active)
     }
     private var tapPending = false
+    private val tileScope = MainScope()
+    private var selectorUpdateJob: Job? = null
 
     private val connection = SagerConnection(SagerConnection.CONNECTION_ID_TILE)
-    override fun stateChanged(state: BaseService.State, profileName: String?, msg: String?) =
+    override fun stateChanged(state: BaseService.State, profileName: String?, msg: String?) {
+        if (state != BaseService.State.Connected) cancelSelectorUpdate()
         updateTile(state, profileName)
+    }
 
     override fun onServiceConnected(service: ISagerNetService) {
         updateTile(BaseService.State.values()[service.state], service.profileName)
@@ -31,8 +41,13 @@ class TileService : BaseTileService(), SagerConnection.Callback {
     }
 
     override fun cbSelectorUpdate(id: Long) {
-        val profile = SagerDatabase.proxyDao.getById(id) ?: return
-        updateTile(BaseService.State.Connected, profile.displayName())
+        cancelSelectorUpdate()
+        selectorUpdateJob = tileScope.launch {
+            val profileName = withContext(Dispatchers.IO) {
+                SagerDatabase.proxyDao.getById(id)?.displayName()
+            } ?: return@launch
+            updateTile(BaseService.State.Connected, profileName)
+        }
     }
 
     override fun onStartListening() {
@@ -41,8 +56,14 @@ class TileService : BaseTileService(), SagerConnection.Callback {
     }
 
     override fun onStopListening() {
+        cancelSelectorUpdate()
         connection.disconnect(this)
         super.onStopListening()
+    }
+
+    override fun onDestroy() {
+        tileScope.cancel()
+        super.onDestroy()
     }
 
     override fun onClick() {
@@ -78,6 +99,11 @@ class TileService : BaseTileService(), SagerConnection.Callback {
             label = label ?: getString(R.string.app_name)
             updateTile()
         }
+    }
+
+    private fun cancelSelectorUpdate() {
+        selectorUpdateJob?.cancel()
+        selectorUpdateJob = null
     }
 
     private fun toggle() {

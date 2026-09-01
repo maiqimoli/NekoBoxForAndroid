@@ -24,10 +24,18 @@ import io.nekohasekai.sagernet.fmt.trojan_go.buildTrojanGoConfig
 import io.nekohasekai.sagernet.ktx.*
 import io.nekohasekai.sagernet.plugin.PluginManager
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import libcore.BoxInstance
 import libcore.Libcore
 import moe.matsuri.nb4a.net.LocalResolverImpl
 import java.io.File
+import java.io.IOException
+
+private fun Throwable?.mergeCloseFailure(next: Throwable): Throwable =
+    this?.also { current ->
+        if (current !== next) current.addSuppressed(next)
+    } ?: next
 
 abstract class BoxInstance(
     val profile: ProxyEntity
@@ -41,12 +49,23 @@ abstract class BoxInstance(
     val externalInstances = hashMapOf<Int, AbstractInstance>()
     open lateinit var processes: GuardedProcessPool
     private var cacheFiles = ArrayList<File>()
+    private val closeMutex = Mutex()
+    private var closed = false
+
+    fun isConfigInitialized(): Boolean = ::config.isInitialized
+
     fun isInitialized(): Boolean {
         return ::config.isInitialized && ::box.isInitialized
     }
 
-    protected fun initPlugin(name: String): PluginManager.InitResult {
-        return pluginPath.getOrPut(name) { PluginManager.init(name)!! }
+    protected fun initPlugin(
+        name: String,
+        requireRoot: Boolean = false,
+    ): PluginManager.InitResult {
+        pluginPath[name]?.takeIf { !requireRoot || it.trustedForRoot }?.let { return it }
+        return requireNotNull(PluginManager.init(name, requireRoot)).also {
+            pluginPath[name] = it
+        }
     }
 
     protected open fun buildConfig() {
@@ -78,7 +97,10 @@ abstract class BoxInstance(
                     }
 
                     is HysteriaBean -> {
-                        initPlugin("hysteria-plugin")
+                        initPlugin(
+                            "hysteria-plugin",
+                            requireRoot = bean.protocol == HysteriaBean.PROTOCOL_FAKETCP,
+                        )
                         pluginConfigs[port] = profile.type to bean.buildHysteria1Config(port) {
                             File(
                                 app.cacheDir, "hysteria_" + SystemClock.elapsedRealtime() + ".ca"
@@ -184,8 +206,12 @@ abstract class BoxInstance(
                         configFile.writeText(config)
                         cacheFiles.add(configFile)
 
+                        val plugin = initPlugin(
+                            "hysteria-plugin",
+                            requireRoot = bean.protocol == HysteriaBean.PROTOCOL_FAKETCP,
+                        )
                         val commands = mutableListOf(
-                            initPlugin("hysteria-plugin").path,
+                            plugin.path,
                             "--no-check",
                             "--config",
                             configFile.absolutePath,
@@ -195,6 +221,9 @@ abstract class BoxInstance(
                         )
 
                         if (bean.protocol == HysteriaBean.PROTOCOL_FAKETCP) {
+                            check(plugin.trustedForRoot) {
+                                "Refusing root execution for an untrusted plugin"
+                            }
                             commands.addAll(0, listOf("su", "-c"))
                         }
 
@@ -207,20 +236,50 @@ abstract class BoxInstance(
         box.start()
     }
 
-    override fun close() {
-        for (instance in externalInstances.values) {
-            runCatching {
+    open suspend fun closeAndWait(): Unit = closeMutex.withLock {
+        if (closed) return@withLock
+
+        var failure: Throwable? = null
+        externalInstances.values.forEach { instance ->
+            try {
                 instance.close()
+            } catch (error: Throwable) {
+                failure = failure.mergeCloseFailure(error)
+            }
+        }
+        externalInstances.clear()
+
+        if (::processes.isInitialized) {
+            try {
+                processes.closeAndJoin()
+            } catch (error: Throwable) {
+                failure = failure.mergeCloseFailure(error)
             }
         }
 
-        cacheFiles.removeAll { it.delete(); true }
-
-        if (::processes.isInitialized) processes.close(SagerNet.application.applicationScope)
-
         if (::box.isInitialized) {
-            box.close()
+            try {
+                box.close()
+            } catch (error: Throwable) {
+                failure = failure.mergeCloseFailure(error)
+            }
         }
+
+        cacheFiles.forEach { file ->
+            try {
+                if (file.exists() && !file.delete()) {
+                    throw IOException("Failed to delete temporary file: ${file.absolutePath}")
+                }
+            } catch (error: Throwable) {
+                failure = failure.mergeCloseFailure(error)
+            }
+        }
+        cacheFiles.clear()
+        closed = true
+
+        failure?.let { throw it }
     }
+
+    override fun close(): Unit = runBlocking { closeAndWait() }
 
 }

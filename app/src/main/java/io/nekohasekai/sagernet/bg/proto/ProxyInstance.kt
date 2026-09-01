@@ -1,65 +1,75 @@
 package io.nekohasekai.sagernet.bg.proto
 
-import io.nekohasekai.sagernet.BuildConfig
 import io.nekohasekai.sagernet.bg.BaseService
-import io.nekohasekai.sagernet.bg.ServiceNotification
 import io.nekohasekai.sagernet.database.ProxyEntity
-import io.nekohasekai.sagernet.ktx.Logs
-import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
-import kotlinx.coroutines.runBlocking
-import moe.matsuri.nb4a.utils.JavaUtil
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-class ProxyInstance(profile: ProxyEntity, var service: BaseService.Interface? = null) :
-    BoxInstance(profile) {
+private fun Throwable?.mergeProxyCloseFailure(next: Throwable): Throwable =
+    this?.also { current ->
+        if (current !== next) current.addSuppressed(next)
+    } ?: next
 
-    var notTmp = true
+class ProxyInstance(
+    profile: ProxyEntity,
+    var service: BaseService.Interface? = null,
+    initialDisplayProfileName: String = profile.displayName(),
+) : BoxInstance(profile) {
 
     var lastSelectorGroupId = -1L
-    var displayProfileName = ServiceNotification.genTitle(profile)
+    var displayProfileName = initialDisplayProfileName
 
-    // for TrafficLooper
-    var looper: TrafficLooper? = null
+    // Create the controller before initialization so service-side resets can serialize with it.
+    val looper = service?.let { TrafficLooper(it.data, it.data.binder) }
+
+    private val closeMutex = Mutex()
+
+    @Volatile
+    private var proxyClosed = false
 
     override fun buildConfig() {
         super.buildConfig()
         lastSelectorGroupId = super.config.selectorGroupId
-        //
-        if (notTmp) Logs.d(config.config)
-        if (notTmp && BuildConfig.DEBUG) Logs.d(JavaUtil.gson.toJson(config.trafficMap))
     }
 
     // only use this in temporary instance
     fun buildConfigTmp() {
-        notTmp = false
         buildConfig()
     }
 
     override suspend fun init() {
-        super.init()
-        pluginConfigs.forEach { (_, plugin) ->
-            val (_, content) = plugin
-            Logs.d(content)
+        val trafficLooper = looper
+        if (trafficLooper == null) {
+            super.init()
+        } else {
+            trafficLooper.withInitializationLock { super.init() }
         }
     }
 
-    override suspend fun loadConfig() {
-        super.loadConfig()
-    }
-
+    @Synchronized
     override fun launch() {
+        check(!proxyClosed) { "Proxy instance is already closed" }
         box.setAsMain()
         super.launch() // start box
-        runOnDefaultDispatcher {
-            looper = service?.let { TrafficLooper(it.data, this) }
-            looper?.start()
-        }
+        looper?.start()
     }
 
-    override fun close() {
-        runBlocking {
+    override suspend fun closeAndWait(): Unit = closeMutex.withLock {
+        if (proxyClosed) return@withLock
+
+        var failure: Throwable? = null
+        try {
             looper?.stop()
-            looper = null
+        } catch (error: Throwable) {
+            failure = failure.mergeProxyCloseFailure(error)
         }
-        super.close()
+        try {
+            super.closeAndWait()
+        } catch (error: Throwable) {
+            failure = failure.mergeProxyCloseFailure(error)
+        }
+        proxyClosed = true
+
+        failure?.let { throw it }
     }
 }

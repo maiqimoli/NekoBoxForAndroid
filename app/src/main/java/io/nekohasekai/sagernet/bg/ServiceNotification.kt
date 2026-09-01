@@ -10,7 +10,6 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
 import android.os.Build
 import android.text.format.Formatter
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import io.nekohasekai.sagernet.Action
@@ -19,14 +18,10 @@ import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.aidl.SpeedDisplayData
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.ProxyEntity
-import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ktx.getColorAttr
-import io.nekohasekai.sagernet.ktx.runOnMainDispatcher
 import io.nekohasekai.sagernet.ui.SwitchActivity
 import io.nekohasekai.sagernet.utils.Theme
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * User can customize visibility of notification since Android 8.
@@ -46,18 +41,16 @@ class ServiceNotification(
         const val notificationId = 1
         val flags = PendingIntent.FLAG_IMMUTABLE
 
-        fun genTitle(ent: ProxyEntity): String {
-            val gn = if (DataStore.showGroupInNotification)
-                SagerDatabase.groupDao.getById(ent.groupId)?.displayName() else null
-            return if (gn == null) ent.displayName() else "[$gn] ${ent.displayName()}"
-        }
+        fun genTitle(ent: ProxyEntity, groupName: String?): String =
+            if (groupName == null) ent.displayName() else "[$groupName] ${ent.displayName()}"
     }
 
     @Volatile
     var listenPostSpeed = SagerNet.power.isInteractive
 
-    suspend fun postNotificationSpeedUpdate(stats: SpeedDisplayData) {
-        useBuilder {
+    fun postNotificationSpeedUpdate(stats: SpeedDisplayData): Boolean =
+        synchronized(lifecycleLock) {
+            if (destroyed) return@synchronized false
             if (showDirectSpeed) {
                 val speedDetail = (service as Context).getString(
                     R.string.speed_detail, service.getString(
@@ -72,8 +65,8 @@ class ServiceNotification(
                         Formatter.formatFileSize(service, stats.rxRateDirect)
                     )
                 )
-                it.setStyle(NotificationCompat.BigTextStyle().bigText(speedDetail))
-                it.setContentText(speedDetail)
+                builder.setStyle(NotificationCompat.BigTextStyle().bigText(speedDetail))
+                builder.setContentText(speedDetail)
             } else {
                 val speedSimple = (service as Context).getString(
                     R.string.traffic, service.getString(
@@ -82,34 +75,35 @@ class ServiceNotification(
                         R.string.speed, Formatter.formatFileSize(service, stats.rxRateProxy)
                     )
                 )
-                it.setContentText(speedSimple)
+                builder.setContentText(speedSimple)
             }
-            it.setSubText(
+            builder.setSubText(
                 service.getString(
                     R.string.traffic,
                     Formatter.formatFileSize(service, stats.txTotal),
                     Formatter.formatFileSize(service, stats.rxTotal)
                 )
             )
+            updateLocked()
+            true
         }
-        update()
+
+    fun postNotificationTitle(newTitle: String): Boolean = synchronized(lifecycleLock) {
+        if (destroyed) return@synchronized false
+        builder.setContentTitle(newTitle)
+        updateLocked()
+        true
     }
 
-    suspend fun postNotificationTitle(newTitle: String) {
-        useBuilder {
-            it.setContentTitle(newTitle)
-        }
-        update()
-    }
-
-    suspend fun postNotificationWakeLockStatus(acquired: Boolean) {
-        updateActions()
-        useBuilder {
-            it.priority =
+    fun postNotificationWakeLockStatus(acquired: Boolean): Boolean =
+        synchronized(lifecycleLock) {
+            if (destroyed) return@synchronized false
+            updateActionsLocked()
+            builder.priority =
                 if (acquired) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_LOW
+            updateLocked()
+            true
         }
-        update()
-    }
 
     private val showDirectSpeed = DataStore.showDirectSpeed
 
@@ -123,13 +117,9 @@ class ServiceNotification(
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setPriority(if (visible) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_MIN)
 
-    private val buildLock = Mutex()
-
-    private suspend fun useBuilder(f: (NotificationCompat.Builder) -> Unit) {
-        buildLock.withLock {
-            f(builder)
-        }
-    }
+    private val lifecycleLock = Any()
+    private var destroyed = false
+    private var receiverRegistered = false
 
     init {
         service as Context
@@ -138,91 +128,102 @@ class ServiceNotification(
         Theme.apply(service)
         builder.color = service.getColorAttr(R.attr.colorPrimary)
 
-        service.registerReceiver(this, IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_ON)
-            addAction(Intent.ACTION_SCREEN_OFF)
-        })
-
-        runOnMainDispatcher {
-            updateActions()
-            show()
+        synchronized(lifecycleLock) {
+            service.registerReceiver(this, IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_SCREEN_OFF)
+            })
+            receiverRegistered = true
         }
+
     }
 
-    private suspend fun updateActions() {
+    private fun updateActionsLocked() {
         service as Context
-        useBuilder {
-            it.clearActions()
+        builder.clearActions()
 
-            val closeAction = NotificationCompat.Action.Builder(
-                0, service.getText(R.string.stop), PendingIntent.getBroadcast(
-                    service, 0, Intent(Action.CLOSE).setPackage(service.packageName), flags
-                )
-            ).setShowsUserInterface(false).build()
-            it.addAction(closeAction)
+        val closeAction = NotificationCompat.Action.Builder(
+            0, service.getText(R.string.stop), PendingIntent.getBroadcast(
+                service, 0, Intent(Action.CLOSE).setPackage(service.packageName), flags
+            )
+        ).setShowsUserInterface(false).build()
+        builder.addAction(closeAction)
 
-            val switchAction = NotificationCompat.Action.Builder(
-                0, service.getString(R.string.action_switch), PendingIntent.getActivity(
-                    service, 0, Intent(service, SwitchActivity::class.java), flags
-                )
-            ).setShowsUserInterface(false).build()
-            it.addAction(switchAction)
+        val switchAction = NotificationCompat.Action.Builder(
+            0, service.getString(R.string.action_switch), PendingIntent.getActivity(
+                service, 0, Intent(service, SwitchActivity::class.java), flags
+            )
+        ).setShowsUserInterface(false).build()
+        builder.addAction(switchAction)
 
-            val resetUpstreamAction = NotificationCompat.Action.Builder(
-                0, service.getString(R.string.reset_connections),
-                PendingIntent.getBroadcast(
-                    service, 0, Intent(Action.RESET_UPSTREAM_CONNECTIONS), flags
-                )
-            ).setShowsUserInterface(false).build()
-            it.addAction(resetUpstreamAction)
-        }
+        val resetUpstreamAction = NotificationCompat.Action.Builder(
+            0, service.getString(R.string.reset_connections),
+            PendingIntent.getBroadcast(
+                service, 0, Intent(Action.RESET_UPSTREAM_CONNECTIONS), flags
+            )
+        ).setShowsUserInterface(false).build()
+        builder.addAction(resetUpstreamAction)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (service.data.state == BaseService.State.Connected) {
-            listenPostSpeed = intent.action == Intent.ACTION_SCREEN_ON
+        synchronized(lifecycleLock) {
+            if (!destroyed && service.data.state == BaseService.State.Connected) {
+                listenPostSpeed = intent.action == Intent.ACTION_SCREEN_ON
+            }
         }
     }
 
-
-    private suspend fun show() =
-        useBuilder {
-            try {
-                if (Build.VERSION.SDK_INT >= 34) {
-                    (service as Service).startForeground(
-                        notificationId,
-                        it.build(),
-                        FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
-                    )
-                } else {
-                    (service as Service).startForeground(notificationId, it.build())
-                }
-            } catch (e: Exception) {
-                Toast.makeText(
-                    SagerNet.application,
-                    "startForeground: $e",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+    fun show(): Boolean = synchronized(lifecycleLock) {
+        if (destroyed) return@synchronized false
+        updateActionsLocked()
+        if (Build.VERSION.SDK_INT >= 34) {
+            (service as Service).startForeground(
+                notificationId,
+                builder.build(),
+                FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+            )
+        } else {
+            (service as Service).startForeground(notificationId, builder.build())
         }
+        true
+    }
 
-    private suspend fun update() = useBuilder {
+    private fun updateLocked() {
         val s = service as Service
         if (Build.VERSION.SDK_INT < 33 ||
             s.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ) {
-            NotificationManagerCompat.from(s).notify(notificationId, it.build())
+            NotificationManagerCompat.from(s).notify(notificationId, builder.build())
         }
     }
 
     fun destroy() {
-        listenPostSpeed = false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            (service as Service).stopForeground(Service.STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION") // API < 24 只能使用旧重载
-            (service as Service).stopForeground(true)
+        var failure: Throwable? = null
+        synchronized(lifecycleLock) {
+            if (destroyed) return
+            destroyed = true
+            listenPostSpeed = false
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    (service as Service).stopForeground(Service.STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION") // API < 24 只能使用旧重载
+                    (service as Service).stopForeground(true)
+                }
+            } catch (error: Throwable) {
+                failure = error
+            }
+            if (receiverRegistered) {
+                receiverRegistered = false
+                try {
+                    (service as Context).unregisterReceiver(this)
+                } catch (error: Throwable) {
+                    failure?.let { current ->
+                        if (current !== error) current.addSuppressed(error)
+                    } ?: run { failure = error }
+                }
+            }
         }
-        service.unregisterReceiver(this)
+        failure?.let { throw it }
     }
 }

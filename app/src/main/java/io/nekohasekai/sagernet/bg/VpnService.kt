@@ -26,9 +26,11 @@ class VpnService : BaseVpnService(),
 
         const val PRIVATE_VLAN4_CLIENT = "172.19.0.1"
         const val PRIVATE_VLAN4_ROUTER = "172.19.0.2"
+        const val PRIVATE_VLAN4_PREFIX = 30
         const val FAKEDNS_VLAN4_CLIENT = "198.18.0.0"
         const val PRIVATE_VLAN6_CLIENT = "fdfe:dcba:9876::1"
         const val PRIVATE_VLAN6_ROUTER = "fdfe:dcba:9876::2"
+        const val PRIVATE_VLAN6_PREFIX = 126
 
     }
 
@@ -54,9 +56,22 @@ class VpnService : BaseVpnService(),
 
     @Suppress("EXPERIMENTAL_API_USAGE")
     override suspend fun killProcesses() {
-        conn?.close()
-        conn = null
-        super.killProcesses()
+        var failure: Throwable? = null
+        try {
+            conn?.close()
+        } catch (error: Throwable) {
+            failure = error
+        } finally {
+            conn = null
+        }
+        try {
+            super.killProcesses()
+        } catch (error: Throwable) {
+            failure?.let { current ->
+                if (current !== error) current.addSuppressed(error)
+            } ?: run { failure = error }
+        }
+        failure?.let { throw it }
     }
 
     override fun onBind(intent: Intent) = when (intent.action) {
@@ -100,26 +115,31 @@ class VpnService : BaseVpnService(),
         val ipv6Mode = DataStore.ipv6Mode
 
         // address
-        builder.addAddress(PRIVATE_VLAN4_CLIENT, 30)
-        if (ipv6Mode != IPv6Mode.DISABLE) {
-            builder.addAddress(PRIVATE_VLAN6_CLIENT, 126)
+        if (ipv6Mode != IPv6Mode.ONLY) {
+            builder.addAddress(PRIVATE_VLAN4_CLIENT, PRIVATE_VLAN4_PREFIX)
+            builder.addDnsServer(PRIVATE_VLAN4_ROUTER)
         }
-        builder.addDnsServer(PRIVATE_VLAN4_ROUTER)
+        if (ipv6Mode != IPv6Mode.DISABLE) {
+            builder.addAddress(PRIVATE_VLAN6_CLIENT, PRIVATE_VLAN6_PREFIX)
+            if (ipv6Mode == IPv6Mode.ONLY) builder.addDnsServer(PRIVATE_VLAN6_ROUTER)
+        }
 
         // route
         if (DataStore.bypassLan) {
-            resources.getStringArray(R.array.bypass_private_route).forEach {
-                val subnet = Subnet.fromString(it)!!
-                builder.addRoute(subnet.address.hostAddress!!, subnet.prefixSize)
+            if (ipv6Mode != IPv6Mode.ONLY) {
+                resources.getStringArray(R.array.bypass_private_route).forEach {
+                    val subnet = Subnet.fromString(it)!!
+                    builder.addRoute(subnet.address.hostAddress!!, subnet.prefixSize)
+                }
+                builder.addRoute(PRIVATE_VLAN4_ROUTER, 32)
+                builder.addRoute(FAKEDNS_VLAN4_CLIENT, 15)
             }
-            builder.addRoute(PRIVATE_VLAN4_ROUTER, 32)
-            builder.addRoute(FAKEDNS_VLAN4_CLIENT, 15)
             // https://issuetracker.google.com/issues/149636790
             if (ipv6Mode != IPv6Mode.DISABLE) {
                 builder.addRoute("2000::", 3)
             }
         } else {
-            builder.addRoute("0.0.0.0", 0)
+            if (ipv6Mode != IPv6Mode.ONLY) builder.addRoute("0.0.0.0", 0)
             if (ipv6Mode != IPv6Mode.DISABLE) {
                 builder.addRoute("::", 0)
             }
@@ -209,7 +229,9 @@ class VpnService : BaseVpnService(),
         builder?.setUnderlyingNetworks(networks) ?: setUnderlyingNetworks(networks)
     }
 
-    override fun onRevoke() = stopRunner()
+    override fun onRevoke() {
+        stopRunner()
+    }
 
     override fun onDestroy() {
         DataStore.vpnService = null

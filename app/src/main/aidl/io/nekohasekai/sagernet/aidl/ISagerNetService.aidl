@@ -9,5 +9,8 @@ interface ISagerNetService {
   void registerCallback(in ISagerNetServiceCallback cb, int id);
   oneway void unregisterCallback(in ISagerNetServiceCallback cb);
 
+  void clearTrafficStats(in long[] profileIds);
+  boolean stopAndWait();
+
   int urlTest();
 }

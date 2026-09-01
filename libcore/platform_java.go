@@ -8,7 +8,7 @@ var isBgProcess bool
 
 type NB4AInterface interface {
 	UseOfficialAssets() bool
-	Selector_OnProxySelected(selectorTag string, tag string)
+	Selector_OnProxySelected(instanceToken int64, selectorTag string, tag string)
 }
 
 type BoxPlatformInterface interface {

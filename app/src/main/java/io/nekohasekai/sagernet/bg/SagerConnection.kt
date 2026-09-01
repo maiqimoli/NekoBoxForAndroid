@@ -34,6 +34,7 @@ class SagerConnection(
         const val CONNECTION_ID_MAIN_ACTIVITY_FOREGROUND = 2
         const val CONNECTION_ID_MAIN_ACTIVITY_BACKGROUND = 3
         const val CONNECTION_ID_RESTART_BG = 4
+        const val CONNECTION_ID_TRANSIENT = 5
 
         var restartingApp = false
     }
@@ -117,6 +118,7 @@ class SagerConnection(
     }
 
     override fun onServiceConnected(name: ComponentName?, binder: IBinder) {
+        if (!connectionActive) return
         this.binder = binder
         val service = ISagerNetService.Stub.asInterface(binder)!!
         this.service = service
@@ -156,13 +158,28 @@ class SagerConnection(
         callbackRegistered = false
     }
 
-    fun connect(context: Context, callback: Callback?) {
-        if (connectionActive) return
-        connectionActive = true
+    fun connect(context: Context, callback: Callback?): Boolean {
+        if (connectionActive) return true
         check(this.callback == null)
+        connectionActive = true
         this.callback = callback
         val intent = Intent(context, serviceClass).setAction(Action.SERVICE)
-        context.bindService(intent, this, Context.BIND_AUTO_CREATE)
+        return try {
+            context.bindService(intent, this, Context.BIND_AUTO_CREATE).also { bound ->
+                if (!bound) resetAfterFailedBind()
+            }
+        } catch (error: Throwable) {
+            resetAfterFailedBind()
+            throw error
+        }
+    }
+
+    private fun resetAfterFailedBind() {
+        callbackRegistered = false
+        connectionActive = false
+        binder = null
+        service = null
+        callback = null
     }
 
     fun disconnect(context: Context) {
