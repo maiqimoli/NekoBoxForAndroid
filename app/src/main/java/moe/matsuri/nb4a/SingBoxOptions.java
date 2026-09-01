@@ -22,8 +22,10 @@ public class SingBoxOptions {
 
     // base
 
-    private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
-    }.getType();
+    // Build the parameterized type explicitly so release shrinking does not depend on
+    // the generic Signature attribute of an anonymous TypeToken subclass.
+    private static final Type MAP_TYPE =
+            TypeToken.getParameterized(Map.class, String.class, Object.class).getType();
 
     private static final Gson gsonSingbox = new GsonBuilder()
             .registerTypeHierarchyAdapter(SingBoxOption.class, new SingBoxOptionSerializer())

@@ -23,6 +23,7 @@
     <dimen name="stats_bar_content_padding_end">10dp</dimen>
     <dimen name="stats_bar_content_padding_bottom">10dp</dimen>
     <dimen name="stats_bar_status_gap">14dp</dimen>
+    <dimen name="stats_bar_speed_top_margin">2dp</dimen>
     <dimen name="stats_bar_exit_top_margin">4dp</dimen>
     <dimen name="stats_bar_control_size">68dp</dimen>
     <dimen name="stats_bar_control_translation_y">2dp</dimen>

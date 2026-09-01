@@ -56,12 +56,11 @@
                         android:id="@+id/status_speed_row"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                        android:orientation="vertical">
 
                         <TextView
                             android:id="@+id/status"
-                            android:layout_width="wrap_content"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:ellipsize="end"
                             android:fontFamily="@font/jetbrains_mono"
@@ -72,34 +71,38 @@
                             android:textStyle="bold"
                             tools:text="已连接" />
 
-                        <View
-                            android:layout_width="@dimen/stats_bar_status_gap"
-                            android:layout_height="1dp" />
-
-                        <TextView
-                            android:id="@+id/tx"
-                            android:layout_width="wrap_content"
+                        <LinearLayout
+                            android:id="@+id/speed_row"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:ellipsize="end"
-                            android:fontFamily="@font/jetbrains_mono"
-                            android:singleLine="true"
-                            android:textColor="@color/cyber_cyan_text"
-                            android:textSize="11sp"
-                            android:textStyle="bold"
-                            tools:text="▲ 0 B/s" />
+                            android:layout_marginTop="@dimen/stats_bar_speed_top_margin"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
-                        <TextView
-                            android:id="@+id/rx"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="10dp"
-                            android:ellipsize="end"
-                            android:fontFamily="@font/jetbrains_mono"
-                            android:singleLine="true"
-                            android:textColor="@color/cyber_emerald_text"
-                            android:textSize="11sp"
-                            android:textStyle="bold"
-                            tools:text="▼ 0 B/s" />
+                            <TextView
+                                android:id="@+id/tx"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/jetbrains_mono"
+                                android:singleLine="true"
+                                android:textColor="@color/cyber_cyan_text"
+                                android:textSize="11sp"
+                                android:textStyle="bold"
+                                tools:text="▲ 0 B/s" />
+
+                            <TextView
+                                android:id="@+id/rx"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="@dimen/stats_bar_status_gap"
+                                android:fontFamily="@font/jetbrains_mono"
+                                android:singleLine="true"
+                                android:textColor="@color/cyber_emerald_text"
+                                android:textSize="11sp"
+                                android:textStyle="bold"
+                                tools:text="▼ 0 B/s" />
+
+                        </LinearLayout>
 
                     </LinearLayout>
 
