@@ -15,6 +15,9 @@ import java.util.zip.Inflater
 
 object Util {
 
+    private const val MAX_ZLIB_INPUT_BYTES = 4 * 1024 * 1024
+    private const val MAX_ZLIB_OUTPUT_BYTES = 16 * 1024 * 1024
+
     /**
      * 取两个文本之间的文本值
      *
@@ -86,35 +89,55 @@ object Util {
     }
 
     fun zlibCompress(input: ByteArray, level: Int): ByteArray {
-        // Compress the bytes
-        // 1 to 4 bytes/char for UTF-8
-        val output = ByteArray(input.size * 4)
+        require(input.size <= MAX_ZLIB_OUTPUT_BYTES) { "Input is too large" }
         val compressor = Deflater(level).apply {
             setInput(input)
             finish()
         }
-        val compressedDataLength: Int = compressor.deflate(output)
-        compressor.end()
-        return output.copyOfRange(0, compressedDataLength)
+        val outputStream = ByteArrayOutputStream(minOf(input.size, DEFAULT_BUFFER_SIZE))
+        return try {
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (!compressor.finished()) {
+                val count = compressor.deflate(buffer)
+                check(count > 0) { "Compression made no progress" }
+                if (outputStream.size() + count > MAX_ZLIB_INPUT_BYTES) {
+                    error("Compressed output is too large")
+                }
+                outputStream.write(buffer, 0, count)
+            }
+            outputStream.toByteArray()
+        } finally {
+            compressor.end()
+            outputStream.close()
+        }
     }
 
     fun zlibDecompress(input: ByteArray): ByteArray {
+        require(input.size <= MAX_ZLIB_INPUT_BYTES) { "Compressed input is too large" }
         val inflater = Inflater()
         val outputStream = ByteArrayOutputStream()
 
-        return outputStream.use {
+        return try {
             val buffer = ByteArray(1024)
-
             inflater.setInput(input)
 
-            var count = -1
-            while (count != 0) {
-                count = inflater.inflate(buffer)
+            while (!inflater.finished()) {
+                val count = inflater.inflate(buffer)
+                if (count == 0) {
+                    if (inflater.finished()) break
+                    if (inflater.needsDictionary()) error("Compressed input requires a dictionary")
+                    if (inflater.needsInput()) error("Compressed input is truncated")
+                    error("Compressed input made no progress")
+                }
+                if (outputStream.size() + count > MAX_ZLIB_OUTPUT_BYTES) {
+                    error("Decompressed input is too large")
+                }
                 outputStream.write(buffer, 0, count)
             }
-
-            inflater.end()
             outputStream.toByteArray()
+        } finally {
+            inflater.end()
+            outputStream.close()
         }
     }
 

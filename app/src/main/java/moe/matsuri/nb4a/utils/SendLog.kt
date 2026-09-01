@@ -8,7 +8,7 @@ import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.app
-import io.nekohasekai.sagernet.ktx.use
+import io.nekohasekai.sagernet.ktx.redactSensitiveData
 import io.nekohasekai.sagernet.utils.CrashHandler
 import java.io.File
 import java.io.FileInputStream
@@ -30,11 +30,10 @@ object SendLog {
         logFile.writeText(report)
 
         try {
-            Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use(
-                FileOutputStream(
-                    logFile, true
-                )
-            )
+            val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d"))
+            val logcat = process.inputStream.bufferedReader().use { it.readText() }
+            logFile.appendText(redactSensitiveData(logcat))
+            process.destroy()
             logFile.appendText("\n")
         } catch (e: IOException) {
             Logs.w(e)
@@ -69,9 +68,9 @@ object SendLog {
             if (max in 1 until len) {
                 stream.skip(len - max) // TODO string?
             }
-            stream.use { it.readBytes() }
+            redactSensitiveData(stream.use { it.readBytes() }.toString(Charsets.UTF_8)).toByteArray()
         } catch (e: Exception) {
-            e.stackTraceToString().toByteArray()
+            redactSensitiveData(e.stackTraceToString()).toByteArray()
         }
     }
 }

@@ -39,10 +39,14 @@ import io.nekohasekai.sagernet.bg.SagerConnection
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.ui.MainActivity
 import io.nekohasekai.sagernet.ui.ThemedActivity
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import moe.matsuri.nb4a.utils.NGUtil
 import java.io.Closeable
 import java.io.FileDescriptor
@@ -262,10 +266,117 @@ fun Fragment.needRestart() {
     }.show()
 }
 
-fun triggerFullRestart(ctx: Context) {
+private const val TRANSIENT_SERVICE_BIND_TIMEOUT_MS = 5_000L
+
+private suspend fun <T> withTemporarySagerService(
+    context: Context,
+    operation: suspend (ISagerNetService) -> T,
+): T? {
+    val appContext = context.applicationContext
+    val connected = CompletableDeferred<ISagerNetService>()
+    val connection = SagerConnection(SagerConnection.CONNECTION_ID_TRANSIENT)
+    val callback = object : SagerConnection.Callback {
+        override fun stateChanged(
+            state: BaseService.State,
+            profileName: String?,
+            msg: String?,
+        ) = Unit
+
+        override fun onServiceConnected(service: ISagerNetService) {
+            connected.complete(service)
+        }
+
+        override fun onServiceDisconnected() {
+            if (!connected.isCompleted) {
+                connected.completeExceptionally(
+                    IllegalStateException("Service disconnected before binding completed")
+                )
+            }
+        }
+
+        override fun onBinderDied() {
+            if (!connected.isCompleted) {
+                connected.completeExceptionally(
+                    IllegalStateException("Service binder died before binding completed")
+                )
+            }
+        }
+    }
+
+    return try {
+        val bound = withContext(Dispatchers.Main.immediate) {
+            connection.connect(appContext, callback)
+        }
+        if (!bound) {
+            Logs.w("Transient service binding was rejected")
+            null
+        } else {
+            val boundService = withTimeout(TRANSIENT_SERVICE_BIND_TIMEOUT_MS) {
+                connected.await()
+            }
+            withContext(Dispatchers.IO) { operation(boundService) }
+        }
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        Logs.w("Transient service operation failed", error)
+        null
+    } finally {
+        withContext(NonCancellable + Dispatchers.Main.immediate) {
+            connection.disconnect(appContext)
+        }
+    }
+}
+
+suspend fun requestServiceStopAndWait(
+    context: Context,
+    service: ISagerNetService?,
+): Boolean {
+    if (service != null) {
+        try {
+            return withContext(Dispatchers.IO) { service.stopAndWait() }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            Logs.w("Existing service connection failed during shutdown", error)
+        }
+    }
+
+    return withTemporarySagerService(context) { it.stopAndWait() } ?: false
+}
+
+suspend fun requestServiceClearTrafficStats(
+    context: Context,
+    service: ISagerNetService?,
+    profileIds: LongArray,
+): Boolean {
+    if (profileIds.isEmpty()) return true
+    if (service != null) {
+        try {
+            withContext(Dispatchers.IO) { service.clearTrafficStats(profileIds) }
+            return true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            Logs.w("Existing service connection failed while clearing traffic", error)
+        }
+    }
+
+    return withTemporarySagerService(context) {
+        it.clearTrafficStats(profileIds)
+    } != null
+}
+
+fun triggerFullRestart(
+    ctx: Context,
+    service: ISagerNetService? = (ctx as? MainActivity)?.connection?.service,
+    serviceAlreadyStopped: Boolean = false,
+) {
     runOnDefaultDispatcher {
-        SagerNet.stopService()
-        delay(500)
+        if (!serviceAlreadyStopped && !requestServiceStopAndWait(ctx, service)) {
+            Logs.w("Full restart cancelled because service shutdown did not complete")
+            return@runOnDefaultDispatcher
+        }
         SagerConnection.restartingApp = true
         val connection = SagerConnection(SagerConnection.CONNECTION_ID_RESTART_BG)
         connection.connect(ctx, RestartCallback {

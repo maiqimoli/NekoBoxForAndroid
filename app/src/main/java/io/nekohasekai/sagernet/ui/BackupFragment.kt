@@ -17,10 +17,8 @@ import androidx.core.content.FileProvider
 import androidx.core.view.isVisible
 import androidx.room.withTransaction
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.jakewharton.processphoenix.ProcessPhoenix
 import io.nekohasekai.sagernet.BuildConfig
 import io.nekohasekai.sagernet.R
-import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.bg.Executable
 import io.nekohasekai.sagernet.database.*
 import io.nekohasekai.sagernet.database.preference.KeyValuePair
@@ -178,11 +176,19 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
         }
     }
 
-    fun Parcelable.toBase64Str(): String {
+    private fun Parcelable.toBase64Str(
+        section: String,
+        index: Int,
+        budget: BackupImportBudget,
+    ): String {
         val parcel = Parcel.obtain()
         writeToParcel(parcel, 0)
         try {
-            return Util.b64EncodeUrlSafe(parcel.marshall())
+            val data = parcel.marshall()
+            budget.recordDecodedItem(section, index, data.size)
+            return Util.b64EncodeUrlSafe(data).also {
+                budget.requireEncodedItem(section, index, it.length)
+            }
         } finally {
             parcel.recycle()
         }
@@ -194,40 +200,54 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
         setting: Boolean,
         password: CharArray? = null
     ): String {
+        val budget = BackupImportBudget()
         val out = JSONObject().apply {
             put("format", BACKUP_FORMAT)
             put("version", CURRENT_BACKUP_VERSION)
             put("createdAt", System.currentTimeMillis())
             if (profile) {
+                val profiles = SagerDatabase.proxyDao.getAll()
+                budget.requireEntryCount("profiles", profiles.size)
                 put("profiles", JSONArray().apply {
-                    SagerDatabase.proxyDao.getAll().forEach {
-                        put(it.toBase64Str())
+                    profiles.forEachIndexed { index, entry ->
+                        put(entry.toBase64Str("profiles", index, budget))
                     }
                 })
 
+                val groups = SagerDatabase.groupDao.allGroups()
+                budget.requireEntryCount("groups", groups.size)
                 put("groups", JSONArray().apply {
-                    SagerDatabase.groupDao.allGroups().forEach {
-                        put(it.toBase64Str())
+                    groups.forEachIndexed { index, entry ->
+                        put(entry.toBase64Str("groups", index, budget))
                     }
                 })
             }
             if (rule) {
+                val rules = SagerDatabase.rulesDao.allRules()
+                budget.requireEntryCount("rules", rules.size)
                 put("rules", JSONArray().apply {
-                    SagerDatabase.rulesDao.allRules().forEach {
-                        put(it.toBase64Str())
+                    rules.forEachIndexed { index, entry ->
+                        put(entry.toBase64Str("rules", index, budget))
                     }
                 })
             }
             if (setting) {
+                val settings = PublicDatabase.kvPairDao.all()
+                budget.requireEntryCount("settings", settings.size)
                 put("settings", JSONArray().apply {
-                    PublicDatabase.kvPairDao.all().forEach {
-                        put(it.toBase64Str())
+                    settings.forEachIndexed { index, entry ->
+                        put(entry.toBase64Str("settings", index, budget))
                     }
                 })
             }
         }
         out.put("checksum", calculateBackupChecksum(out))
-        return if (password == null) out.toStringPretty() else encryptBackup(out.toString(), password)
+        val exported = if (password == null) {
+            out.toStringPretty()
+        } else {
+            encryptBackup(out.toString(), password)
+        }
+        return exported.requireUtf8SizeAtMost(MAX_IMPORTED_CONFIG_BYTES)
     }
 
     private fun deriveBackupKey(
@@ -331,7 +351,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
 
         var content = try {
             JSONObject((requireContext().contentResolver.openInputStream(file) ?: return).use {
-                it.bufferedReader().readText()
+                it.readTextLimited(MAX_IMPORTED_CONFIG_BYTES)
             })
         } catch (e: Exception) {
             Logs.w(e)
@@ -378,7 +398,8 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
             MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.backup_import)
                 .setView(import.root)
                 .setPositiveButton(R.string.backup_import) { _, _ ->
-                    SagerNet.stopService()
+                    val context = requireContext()
+                    val service = (requireActivity() as? MainActivity)?.connection?.service
 
                     val binding = LayoutProgressBinding.inflate(layoutInflater)
                     binding.content.text = getString(R.string.backup_importing)
@@ -388,13 +409,20 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
                         .show()
                     runOnDefaultDispatcher {
                         runCatching {
+                            check(requestServiceStopAndWait(context, service)) {
+                                getString(R.string.action_import_err)
+                            }
                             finishImport(
                                 content,
                                 import.backupConfigurations.isChecked,
                                 import.backupRules.isChecked,
                                 import.backupSettings.isChecked
                             )
-                            triggerFullRestart(requireContext())
+                            triggerFullRestart(
+                                context,
+                                service = service,
+                                serviceAlreadyStopped = true,
+                            )
                         }.onFailure {
                             Logs.w(it)
                             onMainDispatcher {
@@ -419,14 +447,25 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
         val settings: List<KeyValuePair>?
     )
 
+    private data class SagerImportSnapshot(
+        val profiles: List<ProxyEntity>?,
+        val groups: List<ProxyGroup>?,
+        val rules: List<RuleEntity>?,
+    )
+
     private inline fun <T> decodeArray(
         content: JSONObject,
         section: String,
+        budget: BackupImportBudget,
         crossinline creator: (Parcel) -> T
     ): List<T> {
         val source = content.getJSONArray(section)
+        budget.requireEntryCount(section, source.length())
         return List(source.length()) { index ->
-            val data = Util.b64Decode(source.getString(index))
+            val encoded = source.getString(index)
+            budget.requireEncodedItem(section, index, encoded.length)
+            val data = Util.b64Decode(encoded)
+            budget.recordDecodedItem(section, index, data.size)
             val parcel = Parcel.obtain()
             try {
                 parcel.unmarshall(data, 0, data.size)
@@ -447,10 +486,15 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
             runOnDefaultDispatcher {
                 try {
                     content = doBackup(profile, rule, setting, password)
+                    onMainDispatcher { onReady() }
+                } catch (e: Exception) {
+                    Logs.w(e)
+                    onMainDispatcher {
+                        snackbar(e.readableMessage).show()
+                    }
                 } finally {
                     password?.fill('\u0000')
                 }
-                onMainDispatcher { onReady() }
             }
         }
 
@@ -516,18 +560,19 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
     private fun parseBackup(
         content: JSONObject, profile: Boolean, rule: Boolean, setting: Boolean
     ): ParsedBackup {
+        val budget = BackupImportBudget()
         val profiles = if (profile && content.has("profiles")) {
             require(content.has("groups")) { "Backup contains profiles without groups" }
-            decodeArray(content, "profiles", ProxyEntity.CREATOR::createFromParcel)
+            decodeArray(content, "profiles", budget, ProxyEntity.CREATOR::createFromParcel)
         } else null
         val groups = if (profiles != null) {
-            decodeArray(content, "groups", ProxyGroup.CREATOR::createFromParcel)
+            decodeArray(content, "groups", budget, ProxyGroup.CREATOR::createFromParcel)
         } else null
         val rules = if (rule && content.has("rules")) {
-            decodeArray(content, "rules", ParcelizeBridge::createRule)
+            decodeArray(content, "rules", budget, ParcelizeBridge::createRule)
         } else null
         val settings = if (setting && content.has("settings")) {
-            decodeArray(content, "settings", KeyValuePair.CREATOR::createFromParcel)
+            decodeArray(content, "settings", budget, KeyValuePair.CREATOR::createFromParcel)
         } else null
         return ParsedBackup(profiles, groups, rules, settings)
     }
@@ -538,26 +583,46 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
         // Decode every selected section before touching either database. A malformed
         // entry therefore leaves the user's existing profiles, rules and settings intact.
         val parsed = parseBackup(content, profile, rule, setting)
+        val hasSagerChanges = parsed.profiles != null || parsed.rules != null
+        commitCompensatingImport(
+            hasPrimaryChanges = hasSagerChanges,
+            hasSecondaryChanges = parsed.settings != null,
+            capturePrimary = {
+                SagerDatabase.instance.withTransaction {
+                    SagerImportSnapshot(
+                        profiles = if (parsed.profiles != null) SagerDatabase.proxyDao.getAll() else null,
+                        groups = if (parsed.profiles != null) SagerDatabase.groupDao.allGroups() else null,
+                        rules = if (parsed.rules != null) SagerDatabase.rulesDao.allRules() else null,
+                    )
+                }
+            },
+            applyPrimary = { replaceSagerSections(parsed.profiles, parsed.groups, parsed.rules) },
+            restorePrimary = { snapshot ->
+                replaceSagerSections(snapshot.profiles, snapshot.groups, snapshot.rules)
+            },
+            applySecondary = {
+                PublicDatabase.instance.withTransaction {
+                    PublicDatabase.kvPairDao.reset()
+                    PublicDatabase.kvPairDao.insert(checkNotNull(parsed.settings))
+                }
+            },
+        )
+    }
 
-        if (parsed.profiles != null || parsed.rules != null) {
-            SagerDatabase.instance.withTransaction {
-                parsed.profiles?.let { profiles ->
-                    SagerDatabase.proxyDao.reset()
-                    SagerDatabase.proxyDao.insert(profiles)
-                    SagerDatabase.groupDao.reset()
-                    SagerDatabase.groupDao.insert(checkNotNull(parsed.groups))
-                }
-                parsed.rules?.let { rules ->
-                    SagerDatabase.rulesDao.reset()
-                    SagerDatabase.rulesDao.insert(rules)
-                }
-            }
+    private suspend fun replaceSagerSections(
+        profiles: List<ProxyEntity>?,
+        groups: List<ProxyGroup>?,
+        rules: List<RuleEntity>?,
+    ) = SagerDatabase.instance.withTransaction {
+        profiles?.let {
+            SagerDatabase.proxyDao.reset()
+            SagerDatabase.proxyDao.insert(it)
+            SagerDatabase.groupDao.reset()
+            SagerDatabase.groupDao.insert(checkNotNull(groups))
         }
-        parsed.settings?.let { settings ->
-            PublicDatabase.instance.withTransaction {
-                PublicDatabase.kvPairDao.reset()
-                PublicDatabase.kvPairDao.insert(settings)
-            }
+        rules?.let {
+            SagerDatabase.rulesDao.reset()
+            SagerDatabase.rulesDao.insert(it)
         }
     }
 

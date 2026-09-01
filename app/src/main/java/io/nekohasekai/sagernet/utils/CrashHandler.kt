@@ -7,9 +7,9 @@ import android.util.Log
 import com.jakewharton.processphoenix.ProcessPhoenix
 import io.nekohasekai.sagernet.BuildConfig
 import io.nekohasekai.sagernet.SagerNet
-import io.nekohasekai.sagernet.database.preference.PublicDatabase
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.app
+import io.nekohasekai.sagernet.ktx.redactSensitiveData
 import io.nekohasekai.sagernet.ui.BlankActivity
 import java.io.BufferedReader
 import java.io.IOException
@@ -25,7 +25,10 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
         // note: libc / go panic is in android log
 
         try {
-            Log.e(thread.toString(), throwable.stackTraceToString())
+            Log.e(
+                redactSensitiveData(thread.toString()),
+                redactSensitiveData(throwable.stackTraceToString()),
+            )
         } catch (e: Exception) {
             Log.w("CrashHandler", "failed to write crash log", e)
         }
@@ -59,7 +62,7 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
             format += "\n\nCaused by: " + formatThrowable(cause)
         }
 
-        return format
+        return redactSensitiveData(format)
     }
 
     fun buildReportHeader(): String {
@@ -99,19 +102,9 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
         }\n\n"
 
 
-        try {
-            report += "Settings: \n"
-            for (pair in PublicDatabase.kvPairDao.all()) {
-                report += "\n"
-                report += pair.key + ": " + pair.toString()
-            }
-        } catch (e: Exception) {
-            report += "Export settings failed: " + formatThrowable(e)
-        }
+        report += "Settings: [omitted]\n\n"
 
-        report += "\n\n"
-
-        return report
+        return redactSensitiveData(report)
     }
 
     private fun getSystemProperties(): Properties {

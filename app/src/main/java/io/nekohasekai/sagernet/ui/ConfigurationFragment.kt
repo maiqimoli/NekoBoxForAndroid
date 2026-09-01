@@ -68,15 +68,19 @@ import io.nekohasekai.sagernet.group.GroupUpdater
 import io.nekohasekai.sagernet.group.RawUpdater
 import io.nekohasekai.sagernet.ktx.FixedLinearLayoutManager
 import io.nekohasekai.sagernet.ktx.Logs
+import io.nekohasekai.sagernet.ktx.MAX_IMPORTED_ARCHIVE_BYTES
+import io.nekohasekai.sagernet.ktx.MAX_IMPORTED_ARCHIVE_ENTRIES
+import io.nekohasekai.sagernet.ktx.MAX_IMPORTED_CONFIG_BYTES
 import io.nekohasekai.sagernet.ktx.SubscriptionFoundException
 import io.nekohasekai.sagernet.ktx.alert
 import io.nekohasekai.sagernet.ktx.app
-import io.nekohasekai.sagernet.ktx.closeQuietly
 import io.nekohasekai.sagernet.ktx.dp2px
 import io.nekohasekai.sagernet.ktx.getColorAttr
 import io.nekohasekai.sagernet.ktx.getColour
 import io.nekohasekai.sagernet.ktx.isIpAddress
 import io.nekohasekai.sagernet.ktx.onMainDispatcher
+import io.nekohasekai.sagernet.ktx.readBytesLimited
+import io.nekohasekai.sagernet.ktx.readTextLimited
 import io.nekohasekai.sagernet.ktx.readableMessage
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.ktx.runOnLifecycleDispatcher
@@ -393,21 +397,32 @@ class ConfigurationFragment @JvmOverloads constructor(
                     val proxies = mutableListOf<AbstractBean>()
                     if (fileName != null && fileName.endsWith(".zip")) {
                         // try parse wireguard zip
-                        val zip =
-                            ZipInputStream(requireContext().contentResolver.openInputStream(file)!!)
-                        while (true) {
-                            val entry = zip.nextEntry ?: break
-                            if (entry.isDirectory) continue
-                            val fileText = zip.bufferedReader().readText()
-                            RawUpdater.parseRaw(fileText, entry.name)
-                                ?.let { pl -> proxies.addAll(pl) }
-                            zip.closeEntry()
+                        ZipInputStream(
+                            requireContext().contentResolver.openInputStream(file)!!,
+                        ).use { zip ->
+                            var archiveBytes = 0
+                            var entryCount = 0
+                            while (true) {
+                                val entry = zip.nextEntry ?: break
+                                if (++entryCount > MAX_IMPORTED_ARCHIVE_ENTRIES) {
+                                    error("Archive contains too many entries")
+                                }
+                                if (entry.isDirectory) continue
+                                val remainingArchiveBytes = MAX_IMPORTED_ARCHIVE_BYTES - archiveBytes
+                                if (remainingArchiveBytes <= 0) error("Archive is too large")
+                                val entryBytes = zip.readBytesLimited(
+                                    minOf(MAX_IMPORTED_CONFIG_BYTES, remainingArchiveBytes),
+                                )
+                                archiveBytes += entryBytes.size
+                                RawUpdater.parseRaw(entryBytes.toString(Charsets.UTF_8), entry.name)
+                                    ?.let { pl -> proxies.addAll(pl) }
+                                zip.closeEntry()
+                            }
                         }
-                        zip.closeQuietly()
                     } else {
                         val fileText =
                             requireContext().contentResolver.openInputStream(file)!!.use {
-                                it.bufferedReader().readText()
+                                it.readTextLimited()
                             }
                         RawUpdater.parseRaw(fileText, fileName ?: "")
                             ?.let { pl -> proxies.addAll(pl) }

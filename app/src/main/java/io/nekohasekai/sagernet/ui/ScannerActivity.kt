@@ -3,16 +3,18 @@ package io.nekohasekai.sagernet.ui
 import android.Manifest
 import android.content.Intent
 import android.content.pm.ShortcutManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
+import androidx.lifecycle.lifecycleScope
 import com.google.zxing.Result
 import com.king.camera.scan.AnalyzeResult
 import com.king.camera.scan.CameraScan
@@ -25,7 +27,11 @@ import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.ProfileManager
 import io.nekohasekai.sagernet.group.RawUpdater
 import io.nekohasekai.sagernet.ktx.*
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -53,36 +59,70 @@ class ScannerActivity : BarcodeCameraScanActivity() {
         return true
     }
 
-    val importCodeFile = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) {        runOnDefaultDispatcher {
+    val importCodeFile = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@registerForActivityResult
+        try {
+            ScannerImageImportPolicy.requireSelectionCount(uris.size)
+        } catch (error: IllegalArgumentException) {
+            showImportError(error)
+            return@registerForActivityResult
+        }
+        if (!importSession.tryStart()) return@registerForActivityResult
+        lifecycleScope.launch {
             try {
-                it.forEachTry { uri ->
-                    val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        ImageDecoder.decodeBitmap(
-                            ImageDecoder.createSource(
-                                contentResolver, uri
-                            )
-                        ) { decoder, _, _ ->
-                            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                            decoder.isMutableRequired = true
+                importSession.runBatch(uris) { uri ->
+                    try {
+                        val text = withContext(Dispatchers.IO) {
+                            val bytes = contentResolver.openInputStream(uri)?.use {
+                                it.readBytesLimited(ScannerImageImportPolicy.MAX_IMAGE_BYTES)
+                            } ?: throw IllegalArgumentException("Unable to open image")
+                            val bitmap = decodeImportedBitmap(bytes)
+                            try {
+                                CodeUtils.parseQRCode(bitmap)
+                            } finally {
+                                bitmap.recycle()
+                            }
                         }
-                    } else {
-                        @Suppress("DEPRECATION") MediaStore.Images.Media.getBitmap(
-                            contentResolver, uri
-                        )
-                    }
-                    val text = CodeUtils.parseQRCode(bitmap)
-                    onMainDispatcher {
-                        this@ScannerActivity.onScanResultCallback(text, true)
+                        importScanText(text)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        showImportError(e)
                     }
                 }
+            } finally {
                 finish()
-            } catch (e: Exception) {
-                Logs.w(e)
-                onMainDispatcher {
-                    Toast.makeText(app, e.readableMessage, Toast.LENGTH_LONG).show()
-                }
             }
         }
+    }
+
+    private fun decodeImportedBitmap(bytes: ByteArray): Bitmap {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            return ImageDecoder.decodeBitmap(
+                ImageDecoder.createSource(ByteBuffer.wrap(bytes))
+            ) { decoder, info, _ ->
+                val plan = ScannerImageImportPolicy.createDecodePlan(
+                    info.size.width,
+                    info.size.height,
+                )
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                decoder.isMutableRequired = true
+                decoder.setTargetSize(plan.targetWidth, plan.targetHeight)
+            }
+        }
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val plan = ScannerImageImportPolicy.createDecodePlan(
+            bounds.outWidth,
+            bounds.outHeight,
+        )
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = plan.sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            ?: throw IllegalArgumentException("Unsupported image")
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -94,26 +134,26 @@ class ScannerActivity : BarcodeCameraScanActivity() {
         }
     }
 
-    var finished = AtomicBoolean(false)
+    private val importSession = ScannerImportSession()
     var importedN = AtomicInteger(0)
 
     /**
      * 相机扫码结果回调（zxing-lite 3.x，[AnalyzeResult] 包装 [Result]）。
      */
     override fun onScanResultCallback(result: AnalyzeResult<Result>) {
-        if (finished.getAndSet(true)) return
-        finish()
-        onScanResultCallback(result.result.text, false)
+        if (!importSession.tryStart()) return
+        lifecycleScope.launch {
+            try {
+                importScanText(result.result.text)
+            } finally {
+                finish()
+            }
+        }
     }
 
-    /**
-     * 统一处理扫码/图片导入结果文本。
-     */
-    fun onScanResultCallback(text: String?, multi: Boolean) {
-        if (!multi && finished.getAndSet(true)) return
-        if (!multi) finish()
-        runOnDefaultDispatcher {
-            try {
+    private suspend fun importScanText(text: String?) {
+        try {
+            val imported = withContext(Dispatchers.IO) {
                 val resultText = text ?: throw Exception("QR code not found")
                 val results = RawUpdater.parseRaw(resultText)
                 if (!results.isNullOrEmpty()) {
@@ -124,27 +164,32 @@ class ScannerActivity : BarcodeCameraScanActivity() {
 
                     for (profile in results) {
                         ProfileManager.createProfile(currentGroupId, profile)
-                        importedN.addAndGet(1)
+                        importedN.incrementAndGet()
                     }
+                    results.size
                 } else {
-                    onMainDispatcher {
-                        Toast.makeText(app, R.string.action_import_err, Toast.LENGTH_SHORT).show()
-                    }
-                }
-            } catch (e: SubscriptionFoundException) {
-                startActivity(Intent(this@ScannerActivity, MainActivity::class.java).apply {
-                    action = Intent.ACTION_VIEW
-                    data = e.link.toUri()
-                })
-            } catch (e: Throwable) {
-                Logs.w(e)
-                onMainDispatcher {
-                    var message = getString(R.string.action_import_err)
-                    message += "\n" + e.readableMessage
-                    Toast.makeText(app, message, Toast.LENGTH_SHORT).show()
+                    0
                 }
             }
+            if (imported == 0) {
+                Toast.makeText(app, R.string.action_import_err, Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: SubscriptionFoundException) {
+            startActivity(Intent(this, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                data = e.link.toUri()
+            })
+        } catch (e: Throwable) {
+            showImportError(e)
         }
+    }
+
+    private fun showImportError(error: Throwable) {
+        Logs.w(error)
+        val message = getString(R.string.action_import_err) + "\n" + error.readableMessage
+        Toast.makeText(app, message, Toast.LENGTH_SHORT).show()
     }
 
     /**
