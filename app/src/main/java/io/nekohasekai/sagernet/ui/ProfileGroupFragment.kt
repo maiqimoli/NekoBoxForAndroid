@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -44,6 +45,8 @@ import io.nekohasekai.sagernet.widget.QRCodeDialog
 import io.nekohasekai.sagernet.widget.UndoSnackbarManager
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import moe.matsuri.nb4a.Protocols
 import moe.matsuri.nb4a.Protocols.getProtocolColor
 import moe.matsuri.nb4a.proxy.anytls.AnyTLSSettingsActivity
@@ -77,21 +80,19 @@ import androidx.core.view.size
         lateinit var undoManager: UndoSnackbarManager<ProxyEntity>
         var adapter: ProfileConfigurationAdapter? = null
 
+        override fun onCreate(savedInstanceState: Bundle?) {
+            super.onCreate(savedInstanceState)
+            @Suppress("DEPRECATION") // API 33 前 getParcelable 泛型兼容路径
+            savedInstanceState?.getParcelable<ProxyGroup>("proxyGroup")?.also {
+                proxyGroup = it
+            }
+        }
+
         override fun onSaveInstanceState(outState: Bundle) {
             super.onSaveInstanceState(outState)
 
             if (::proxyGroup.isInitialized) {
                 outState.putParcelable("proxyGroup", proxyGroup)
-            }
-        }
-
-        override fun onViewStateRestored(savedInstanceState: Bundle?) {
-            super.onViewStateRestored(savedInstanceState)
-
-            @Suppress("DEPRECATION") // API 33 前 getParcelable 泛型兼容路径
-            savedInstanceState?.getParcelable<ProxyGroup>("proxyGroup")?.also {
-                proxyGroup = it
-                onViewCreated(requireView(), null)
             }
         }
 
@@ -128,9 +129,7 @@ import androidx.core.view.size
 
             if (::configurationListView.isInitialized && configurationListView.size == 0) {
                 configurationListView.adapter = adapter
-                runOnDefaultDispatcher {
-                    adapter?.reloadProfiles()
-                }
+                adapter?.reloadProfiles()
             } else if (!::configurationListView.isInitialized) {
                 onViewCreated(requireView(), null)
             }
@@ -162,9 +161,10 @@ import androidx.core.view.size
 
             fun updateTo(order: Int) {
                 if (proxyGroup.order == order) return
-                runOnDefaultDispatcher {
-                    proxyGroup.order = order
-                    GroupManager.updateGroup(proxyGroup)
+                val updatedGroup = proxyGroup.copy(order = order)
+                proxyGroup = updatedGroup
+                viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+                    GroupManager.updateGroup(updatedGroup)
                 }
             }
 
@@ -252,15 +252,18 @@ import androidx.core.view.size
 
         }
 
-        override fun onDestroy() {
+        override fun onDestroyView() {
             adapter?.let {
                 ProfileManager.removeListener(it)
                 GroupManager.removeListener(it)
             }
-
-            super.onDestroy()
-            if (!::undoManager.isInitialized) return
-            undoManager.flush()
+            if (::configurationListView.isInitialized) {
+                configurationListView.adapter = null
+            }
+            adapter = null
+            emptyView = null
+            if (::undoManager.isInitialized) undoManager.flush()
+            super.onDestroyView()
         }
 
         val profileAccess = Mutex()

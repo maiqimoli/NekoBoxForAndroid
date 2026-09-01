@@ -33,15 +33,15 @@ Date: 2026-05-02
 
 - `:app:compileOssDebugKotlin` passed.
 - `:app:assembleOssDebug` passed.
-- `:app:assembleOssRelease` passed, but generated unsigned release APKs because signing credentials were not available.
+- Local release assembly can generate unsigned APKs when signing is not explicitly required; release
+  CI now fails closed unless signing credentials are present and every APK passes `apksigner`.
 - Targeted unit test passed:
   `:app:testOssDebugUnitTest --tests io.nekohasekai.sagernet.fmt.socks.SOCKSFmtTest`.
-- Installed debug APK on device `1a11b808`.
+- Installed the debug APK on `TEST_DEVICE`.
 - Direct SOCKS5 connectivity to the Indonesian landing proxy worked.
-- The tested Indonesian exit IP was `36.81.77.156`, country `ID`, city `Padang`.
+- The tested exit was in country `ID`, city `Padang`.
 - `:app:assembleOssDebug` still passes after the SOCKS IPv6 parser and auto-region matcher refinements.
-- Installed the current arm64 debug APK on unlocked wireless device
-  `adb-718b4b09-ooMRqv._adb-tls-connect._tcp`.
+- Installed the current arm64 debug APK on an unlocked wireless test device.
 - Verified the existing 2-hop chain card expands with hop details and no text overlap on a 1080x2340
   device. A 3-5 hop chain was not present on-device, and no temporary profile data was created.
 
@@ -91,8 +91,8 @@ Recommended check: change only the SOCKS username session value and retest Japan
 
 Android app data is isolated by package name and signing certificate.
 
-- Existing original package: `moe.nb4a`, signature observed on device: `fce245f0`.
-- MQ debug package: `moe.nb4a.debug`, signature observed on device: `34fb139b`.
+- Existing original package: `moe.nb4a`, signed with the release certificate.
+- MQ debug package: `moe.nb4a.debug`, signed with the local debug certificate.
 - The device has no `su` root access.
 - `run-as moe.nb4a` is not allowed because the original package is not debuggable.
 
@@ -109,6 +109,9 @@ The first path requires these signing values:
 KEYSTORE_PASS=...
 ALIAS_NAME=...
 ALIAS_PASS=...
+KEYSTORE_PATH=...
 ```
 
-They can be provided via `local.properties` or environment variables before building `:app:assembleOssRelease`.
+They can be provided via `local.properties` or environment variables before building
+`:app:assembleOssRelease`. `KEYSTORE_PATH` is optional; local builds fall back to
+`release.keystore.local` and then the legacy `release.keystore` filename.

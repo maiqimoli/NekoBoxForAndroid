@@ -60,6 +60,11 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.view.isGone
 import androidx.core.view.size
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicLong
 
 class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : RecyclerView.Adapter<ConfigurationHolder>(),
     ProfileManager.Listener,
@@ -72,6 +77,7 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
 
     var configurationIdList: MutableList<Long> = mutableListOf()
     val configurationList = HashMap<Long, ProxyEntity>()
+    private val liveTraffic = HashMap<Long, TrafficData>()
     private var sourceProfileIds: List<Long> = emptyList()
     private var profileRegions: Map<Long, String?> = emptyMap()
     private var searchQuery = ""
@@ -84,14 +90,8 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
         get() = searchQuery.isNotEmpty() || profileFilter != ProfileFilter.ALL
 
     private fun getItem(profileId: Long): ProxyEntity {
-        var profile = configurationList[profileId]
-        if (profile == null) {
-            profile = ProfileManager.getProfile(profileId)
-            if (profile != null) {
-                configurationList[profileId] = profile
-            }
-        }
-        return profile!!
+        return configurationList[profileId]
+            ?: throw NoSuchElementException("Profile $profileId is missing from the adapter snapshot")
     }
 
     private fun getItemAt(index: Int) = getItem(configurationIdList[index])
@@ -113,8 +113,9 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
 
     override fun onBindViewHolder(holder: ConfigurationHolder, position: Int) {
         try {
-            holder.bind(getItemAt(position))
-        } catch (ignored: NullPointerException) { // when group deleted
+            val item = getItemAt(position)
+            holder.bind(item, liveTraffic[item.id])
+        } catch (ignored: NoSuchElementException) { // snapshot changed while the row was binding
         }
     }
 
@@ -131,7 +132,7 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
                 for (payload in payloads) {
                     when (payload) {
                         ConfigurationPayload.LATENCY -> holder.updateStatus(item)
-                        ConfigurationPayload.TRAFFIC -> holder.updateTraffic(item)
+                        ConfigurationPayload.TRAFFIC -> holder.updateTraffic(item, liveTraffic[item.id])
                         ConfigurationPayload.SELECTED -> holder.updateSelected(item)
                         ConfigurationPayload.FAVORITE -> holder.updateFavorite(item)
                         else -> holder.bind(item)
@@ -147,6 +148,7 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
     }
 
     private val updated = HashSet<ProxyEntity>()
+    private val reloadGeneration = AtomicLong()
 
     fun setFilters(query: String, filter: ProfileFilter) {
         searchQuery = query.trim().lowercase()
@@ -258,9 +260,13 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
         notifyItemMoved(from, to)
     }
 
-    fun commitMove() = runOnDefaultDispatcher {
-        updated.forEach { SagerDatabase.proxyDao.updateProxy(it) }
+    fun commitMove() {
+        val pendingUpdates = updated.map { it.copy() }
         updated.clear()
+        if (pendingUpdates.isEmpty()) return
+        owner.viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            SagerDatabase.proxyDao.updateProxy(pendingUpdates)
+        }
     }
 
     fun remove(pos: Int) {
@@ -364,15 +370,16 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
     }
 
     override suspend fun onUpdated(data: TrafficData) {
-        try {
-            val index = configurationIdList.indexOf(data.id)
-            if (index != -1) {
-                owner.configurationListView.post {
+        owner.configurationListView.post {
+            try {
+                liveTraffic[data.id] = data
+                val index = configurationIdList.indexOf(data.id)
+                if (index != -1) {
                     notifyItemChanged(index, ConfigurationPayload.TRAFFIC)
                 }
+            } catch (e: Exception) {
+                Logs.w(e)
             }
-        } catch (e: Exception) {
-            Logs.w(e)
         }
     }
 
@@ -385,6 +392,7 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
             pendingRemovalIds.remove(profileId)
             sourceProfileIds = sourceProfileIds.filterNot { it == profileId }
             configurationList.remove(profileId)
+            liveTraffic.remove(profileId)
             profileRegions = profileRegions - profileId
             submitVisibleProfileIds(visibleProfileIds())
         }
@@ -395,41 +403,43 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
 
     override suspend fun groupUpdated(group: ProxyGroup) {
         if (group.id != owner.proxyGroup.id) return
-        owner.proxyGroup = group
-        reloadProfiles()
+        reloadProfiles(group)
     }
 
     override suspend fun groupUpdated(groupId: Long) {
         if (groupId != owner.proxyGroup.id) return
-        owner.proxyGroup = SagerDatabase.groupDao.getById(groupId)!!
-        reloadProfiles()
+        val group = withContext(Dispatchers.IO) {
+            SagerDatabase.groupDao.getById(groupId)
+        } ?: return
+        reloadProfiles(group)
     }
 
-    fun reloadProfiles() {
-        var newProfiles = SagerDatabase.proxyDao.getByGroup(owner.proxyGroup.id)
-        when (owner.proxyGroup.order) {
-            GroupOrder.BY_NAME -> {
-                newProfiles = newProfiles.sortedBy { it.displayName() }
-
-            }
-
-            GroupOrder.BY_DELAY -> {
-                newProfiles =
+    fun reloadProfiles(group: ProxyGroup = owner.proxyGroup) {
+        val lifecycleOwner = runCatching { owner.viewLifecycleOwner }.getOrNull() ?: return
+        val generation = reloadGeneration.incrementAndGet()
+        lifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            var newProfiles = SagerDatabase.proxyDao.getByGroup(group.id)
+            when (group.order) {
+                GroupOrder.BY_NAME -> newProfiles = newProfiles.sortedBy { it.displayName() }
+                GroupOrder.BY_DELAY -> newProfiles =
                     newProfiles.sortedBy { if (it.status == 1) it.ping else 114514 }
             }
-        }
+            val newConfigurationList = newProfiles.associateBy { it.id }
+            val newProfileIds = newProfiles.map { it.id }
+            val newProfileRegions = newProfiles.associate { profile ->
+                profile.id to runCatching {
+                    AutoRegionManager.resolveRegionCode(profile)
+                }.getOrNull()
+            }
 
-        configurationList.clear()
-        configurationList.putAll(newProfiles.associateBy { it.id })
-        val newProfileIds = newProfiles.map { it.id }
-        sourceProfileIds = newProfileIds
-        profileRegions = newProfiles.associate { profile ->
-            profile.id to runCatching {
-                AutoRegionManager.resolveRegionCode(profile)
-            }.getOrNull()
-        }
-
-        owner.configurationListView.post {
+            withContext(Dispatchers.Main.immediate) {
+                if (generation != reloadGeneration.get()) return@withContext
+                owner.proxyGroup = group
+                configurationList.clear()
+                configurationList.putAll(newConfigurationList)
+                sourceProfileIds = newProfileIds
+                liveTraffic.keys.retainAll(newProfileIds.toSet())
+                profileRegions = newProfileRegions
             val visibleIds = visibleProfileIds()
             val selectedProfileIndex = if (owner.selected) {
                 val selectedProxy = owner.selectedItem?.id ?: DataStore.selectedProxy
@@ -444,7 +454,7 @@ class ProfileConfigurationAdapter(private val owner: ProfileGroupFragment) : Rec
             } else if (visibleIds.isNotEmpty()) {
                 owner.configurationListView.scrollTo(0, true)
             }
-
+            }
         }
     }
 

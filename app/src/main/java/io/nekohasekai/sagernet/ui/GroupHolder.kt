@@ -14,6 +14,7 @@ import androidx.core.view.*
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.nekohasekai.sagernet.GroupType
 import io.nekohasekai.sagernet.R
@@ -26,7 +27,10 @@ import io.nekohasekai.sagernet.ktx.*
 import io.nekohasekai.sagernet.widget.ListListener
 import io.nekohasekai.sagernet.widget.QRCodeDialog
 import io.nekohasekai.sagernet.widget.UndoSnackbarManager
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.matsuri.nb4a.utils.Util
 import moe.matsuri.nb4a.utils.toBytesString
 import java.lang.NumberFormatException
@@ -45,6 +49,7 @@ class GroupHolder(private val owner: GroupFragment, binding: LayoutGroupItemBind
     val optionsButton = binding.options
     val updateButton = binding.groupUpdate
     val subscriptionUpdateProgress = binding.subscriptionUpdateProgress
+    private var statusJob: Job? = null
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
 
@@ -98,6 +103,7 @@ class GroupHolder(private val owner: GroupFragment, binding: LayoutGroupItemBind
 
 
     fun bind(group: ProxyGroup) {
+        statusJob?.cancel()
         proxyGroup = group
 
         itemView.setOnClickListener { }
@@ -231,9 +237,11 @@ class GroupHolder(private val owner: GroupFragment, binding: LayoutGroupItemBind
 
         groupUser.text = subscription?.username ?: ""
 
-        runOnDefaultDispatcher {
-            val size = SagerDatabase.proxyDao.countByGroup(group.id)
-            onMainDispatcher {
+        statusJob = owner.viewLifecycleOwner.lifecycleScope.launch {
+            val size = withContext(Dispatchers.IO) {
+                SagerDatabase.proxyDao.countByGroup(group.id)
+            }
+            if (proxyGroup.id == group.id) {
                 @Suppress("DEPRECATION") when (group.type) {
                     GroupType.BASIC -> {
                         if (size == 0L) {
@@ -258,7 +266,6 @@ class GroupHolder(private val owner: GroupFragment, binding: LayoutGroupItemBind
                     }
                 }
             }
-
         }
 
     }

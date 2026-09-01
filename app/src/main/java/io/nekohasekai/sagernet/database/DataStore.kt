@@ -20,6 +20,11 @@ import io.nekohasekai.sagernet.ktx.string
 import io.nekohasekai.sagernet.ktx.stringToInt
 import io.nekohasekai.sagernet.ktx.stringToIntIfExists
 import moe.matsuri.nb4a.TempDatabase
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 object DataStore : OnPreferenceDataStoreChangeListener {
 
@@ -38,7 +43,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var favoriteProfiles by configurationStore.string(Key.PROFILE_FAVORITES) { "" }
     var recentProfiles by configurationStore.string(Key.PROFILE_RECENT) { "" }
     var profileTestTimes by configurationStore.string(Key.PROFILE_TEST_TIMES) { "" }
-    var selectedGroup by configurationStore.long(Key.PROFILE_GROUP) { currentGroupId() } // "ungrouped" group id = 1
+    var selectedGroup by configurationStore.long(Key.PROFILE_GROUP) { 0L }
 
     // only in bg process
     var vpnService: VpnService? = null
@@ -48,44 +53,42 @@ object DataStore : OnPreferenceDataStoreChangeListener {
 
     var runningTest = false
 
-    fun currentGroupId(): Long {
-        val currentSelected = configurationStore.getLong(Key.PROFILE_GROUP, -1)
-        if (currentSelected > 0L) return currentSelected
-        val groups = SagerDatabase.groupDao.allGroups()
-        if (groups.isNotEmpty()) {
-            val groupId = groups[0].id
+    private val groupSelectionMutex = Mutex()
+
+    suspend fun currentGroupId(): Long = withContext(Dispatchers.IO) {
+        groupSelectionMutex.withLock {
+            val currentSelected = configurationStore.getLong(Key.PROFILE_GROUP, -1)
+            if (currentSelected > 0L) return@withLock currentSelected
+
+            val groupId = SagerDatabase.groupDao.allGroups().firstOrNull()?.id
+                ?: SagerDatabase.groupDao.createGroup(ProxyGroup(ungrouped = true))
             selectedGroup = groupId
-            return groupId
+            groupId
         }
-        val groupId = SagerDatabase.groupDao.createGroup(ProxyGroup(ungrouped = true))
-        selectedGroup = groupId
-        return groupId
     }
 
-    fun currentGroup(): ProxyGroup {
-        var group: ProxyGroup? = null
-        val currentSelected = configurationStore.getLong(Key.PROFILE_GROUP, -1)
-        if (currentSelected > 0L) {
-            group = SagerDatabase.groupDao.getById(currentSelected)
+    suspend fun currentGroup(): ProxyGroup = withContext(Dispatchers.IO) {
+        groupSelectionMutex.withLock {
+            val currentSelected = configurationStore.getLong(Key.PROFILE_GROUP, -1)
+            val selected = currentSelected.takeIf { it > 0L }
+                ?.let(SagerDatabase.groupDao::getById)
+            if (selected != null) return@withLock selected
+
+            val group = SagerDatabase.groupDao.allGroups().firstOrNull()
+                ?: ProxyGroup(ungrouped = true).apply {
+                    id = SagerDatabase.groupDao.createGroup(this)
+                }
+            selectedGroup = group.id
+            group
         }
-        if (group != null) return group
-        val groups = SagerDatabase.groupDao.allGroups()
-        if (groups.isEmpty()) {
-            group = ProxyGroup(ungrouped = true).apply {
-                id = SagerDatabase.groupDao.createGroup(this)
-            }
-        } else {
-            group = groups[0]
-        }
-        selectedGroup = group.id
-        return group
     }
 
-    fun selectedGroupForImport(): Long {
+    suspend fun selectedGroupForImport(): Long {
         val current = currentGroup()
         if (current.type == GroupType.BASIC) return current.id
-        val groups = SagerDatabase.groupDao.allGroups()
-        return groups.find { it.type == GroupType.BASIC }!!.id
+        return withContext(Dispatchers.IO) {
+            SagerDatabase.groupDao.allGroups().first { it.type == GroupType.BASIC }.id
+        }
     }
 
     var appTLSVersion by configurationStore.string(Key.APP_TLS_VERSION)
@@ -100,7 +103,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
 
     var isExpert by configurationStore.boolean(Key.APP_EXPERT)
     var appTheme by configurationStore.int(Key.APP_THEME)
-    var appLanguage by configurationStore.string(Key.APP_LANGUAGE) { "zh-CN" }
+    var appLanguage by configurationStore.string(Key.APP_LANGUAGE) { "system" }
     var autoRegionTimeZone by configurationStore.boolean(Key.AUTO_REGION_TIME_ZONE)
     var nightTheme by configurationStore.stringToInt(Key.NIGHT_THEME)
     var serviceMode by configurationStore.string(Key.SERVICE_MODE) { Key.MODE_VPN }
@@ -170,6 +173,15 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var profileTrafficStatistics by configurationStore.boolean(Key.PROFILE_TRAFFIC_STATISTICS) { true }
 
     var yacdURL by configurationStore.string("yacdURL") { "http://127.0.0.1:9090/ui" }
+    private var clashApiSecretValue by configurationStore.string("clashApiSecret")
+
+    @Synchronized
+    fun clashApiSecret(): String {
+        clashApiSecretValue.takeIf { it.isNotBlank() }?.let { return it }
+        return UUID.randomUUID().toString().replace("-", "").also {
+            clashApiSecretValue = it
+        }
+    }
 
     // protocol
 

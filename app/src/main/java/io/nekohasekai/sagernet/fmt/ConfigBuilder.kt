@@ -6,6 +6,7 @@ import io.nekohasekai.sagernet.bg.VpnService
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.database.ProxyEntity
+import io.nekohasekai.sagernet.database.ProxyGroup
 import io.nekohasekai.sagernet.database.ProxyEntity.Companion.TYPE_CONFIG
 import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.fmt.ConfigBuildResult.IndexEntity
@@ -82,21 +83,26 @@ fun buildConfig(
     val tagMap = HashMap<Long, String>()
     val globalOutbounds = HashMap<Long, String>()
     val selectorNames = ArrayList<String>()
-    val group = SagerDatabase.groupDao.getById(proxy.groupId)
+    // Config generation can traverse every selector member and several nested chains. Build a
+    // stable in-memory graph up front instead of issuing group/profile queries for every chain.
+    val profileSnapshot = SagerDatabase.proxyDao.getAll()
+    val profilesById = profileSnapshot.associateBy { it.id }
+    val profilesByGroup = profileSnapshot.groupBy { it.groupId }.mapValues { (_, profiles) ->
+        profiles.sortedBy { it.userOrder }
+    }
+    val groupsById = SagerDatabase.groupDao.allGroups().associateBy(ProxyGroup::id)
+    val group = groupsById[proxy.groupId]
+    val chainResolver = ChainGraphResolver(
+        nodesById = profilesById,
+        idOf = ProxyEntity::id,
+        childrenOf = { entity ->
+            (entity.requireBean() as? ChainBean)?.let { it.proxies ?: emptyList() }
+        },
+        describe = { entity -> "${entity.id} (${entity.displayName()})" },
+    )
 
     fun ProxyEntity.resolveChainInternal(): MutableList<ProxyEntity> {
-        val bean = requireBean()
-        if (bean is ChainBean) {
-            val beans = SagerDatabase.proxyDao.getEntities(bean.proxies)
-            val beansMap = beans.associateBy { it.id }
-            val beanList = ArrayList<ProxyEntity>()
-            for (proxyId in bean.proxies) {
-                val item = beansMap[proxyId] ?: continue
-                beanList.addAll(item.resolveChainInternal())
-            }
-            return beanList.asReversed()
-        }
-        return mutableListOf(this)
+        return chainResolver.resolve(this).toMutableList()
     }
 
     fun selectorName(name_: String): String {
@@ -111,9 +117,9 @@ fun buildConfig(
     }
 
     fun ProxyEntity.resolveChain(): MutableList<ProxyEntity> {
-        val thisGroup = SagerDatabase.groupDao.getById(groupId)
-        val frontProxy = thisGroup?.frontProxy?.let { SagerDatabase.proxyDao.getById(it) }
-        val landingProxy = thisGroup?.landingProxy?.let { SagerDatabase.proxyDao.getById(it) }
+        val thisGroup = groupsById[groupId]
+        val frontProxy = thisGroup?.frontProxy?.let(profilesById::get)
+        val landingProxy = thisGroup?.landingProxy?.let(profilesById::get)
         val list = resolveChainInternal()
         if (frontProxy != null) {
             list.add(frontProxy)
@@ -126,9 +132,9 @@ fun buildConfig(
 
     val extraRules = if (forTest) listOf() else SagerDatabase.rulesDao.enabledRules()
     val extraProxies =
-        if (forTest) mapOf() else SagerDatabase.proxyDao.getEntities(extraRules.mapNotNull { rule ->
+        if (forTest) mapOf() else extraRules.mapNotNull { rule ->
             rule.outbound.takeIf { it > 0 && it != proxy.id }
-        }.toHashSet().toList()).associateBy { it.id }
+        }.toHashSet().mapNotNull(profilesById::get).associateBy { it.id }
     val buildSelector = !forTest && group?.isSelector == true && !forExport
     val userDNSRuleList = mutableListOf<DNSRule_DefaultOptions>()
     val domainListDNSDirectForce = mutableListOf<String>()
@@ -161,6 +167,7 @@ fun buildConfig(
             clash_api = ClashAPIOptions().apply {
                 external_controller = "127.0.0.1:9090"
                 external_ui = "../files/yacd"
+                secret = DataStore.clashApiSecret()
             }
         }
 
@@ -212,16 +219,24 @@ fun buildConfig(
                 sniff_override_destination = needSniffOverride
                 when (ipv6Mode) {
                     IPv6Mode.DISABLE -> {
-                        inet4_address = listOf(VpnService.PRIVATE_VLAN4_CLIENT + "/28")
+                        inet4_address = listOf(
+                            "${VpnService.PRIVATE_VLAN4_CLIENT}/${VpnService.PRIVATE_VLAN4_PREFIX}"
+                        )
                     }
 
                     IPv6Mode.ONLY -> {
-                        inet6_address = listOf(VpnService.PRIVATE_VLAN6_CLIENT + "/126")
+                        inet6_address = listOf(
+                            "${VpnService.PRIVATE_VLAN6_CLIENT}/${VpnService.PRIVATE_VLAN6_PREFIX}"
+                        )
                     }
 
                     else -> {
-                        inet4_address = listOf(VpnService.PRIVATE_VLAN4_CLIENT + "/28")
-                        inet6_address = listOf(VpnService.PRIVATE_VLAN6_CLIENT + "/126")
+                        inet4_address = listOf(
+                            "${VpnService.PRIVATE_VLAN4_CLIENT}/${VpnService.PRIVATE_VLAN4_PREFIX}"
+                        )
+                        inet6_address = listOf(
+                            "${VpnService.PRIVATE_VLAN6_CLIENT}/${VpnService.PRIVATE_VLAN6_PREFIX}"
+                        )
                     }
                 }
             })
@@ -468,7 +483,7 @@ fun buildConfig(
 
         // build outbounds
         if (buildSelector) {
-            val list = group.id.let { SagerDatabase.proxyDao.getByGroup(it) }
+            val list = profilesByGroup[group.id].orEmpty()
             list.forEach {
                 tagMap[it.id] = buildChain(it.id, it)
             }

@@ -1,5 +1,6 @@
 package io.nekohasekai.sagernet.database
 
+import androidx.room.withTransaction
 import io.nekohasekai.sagernet.GroupType
 import io.nekohasekai.sagernet.bg.SubscriptionUpdater
 import io.nekohasekai.sagernet.ktx.applyDefaultValues
@@ -54,8 +55,13 @@ object GroupManager {
     }
 
     suspend fun clearGroup(groupId: Long) {
-        DataStore.selectedProxy = 0L
-        SagerDatabase.proxyDao.deleteAll(groupId)
+        SagerDatabase.instance.withTransaction {
+            val selectedProxy = DataStore.selectedProxy
+            if (selectedProxy != 0L && SagerDatabase.proxyDao.getById(selectedProxy)?.groupId == groupId) {
+                DataStore.selectedProxy = 0L
+            }
+            SagerDatabase.proxyDao.deleteAll(groupId)
+        }
         iterator { groupUpdated(groupId) }
     }
 
@@ -98,15 +104,19 @@ object GroupManager {
     }
 
     suspend fun deleteGroup(groupId: Long) {
-        SagerDatabase.groupDao.deleteById(groupId)
-        SagerDatabase.proxyDao.deleteByGroup(groupId)
+        SagerDatabase.instance.withTransaction {
+            SagerDatabase.proxyDao.deleteByGroup(groupId)
+            SagerDatabase.groupDao.deleteById(groupId)
+        }
         iterator { groupRemoved(groupId) }
         SubscriptionUpdater.reconfigureUpdater()
     }
 
     suspend fun deleteGroup(group: List<ProxyGroup>) {
-        SagerDatabase.groupDao.deleteGroup(group)
-        SagerDatabase.proxyDao.deleteByGroup(group.map { it.id }.toLongArray())
+        SagerDatabase.instance.withTransaction {
+            SagerDatabase.proxyDao.deleteByGroup(group.map { it.id }.toLongArray())
+            SagerDatabase.groupDao.deleteGroup(group)
+        }
         for (proxyGroup in group) iterator { groupRemoved(proxyGroup.id) }
         SubscriptionUpdater.reconfigureUpdater()
     }

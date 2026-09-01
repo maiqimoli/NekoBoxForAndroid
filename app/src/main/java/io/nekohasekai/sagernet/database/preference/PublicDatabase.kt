@@ -17,6 +17,7 @@ abstract class PublicDatabase : RoomDatabase() {
             SagerNet.application.getDatabasePath(Key.DB_PROFILE).parentFile?.mkdirs()
             Room.databaseBuilder(SagerNet.application, PublicDatabase::class.java, Key.DB_PUBLIC)
                 .setJournalMode(JournalMode.TRUNCATE)
+                // PreferenceDataStore exposes synchronous getters/setters to AndroidX UI code.
                 .allowMainThreadQueries()
                 .enableMultiInstanceInvalidation()
                 .build()

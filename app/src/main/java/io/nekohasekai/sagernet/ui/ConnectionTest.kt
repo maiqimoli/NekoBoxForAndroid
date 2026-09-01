@@ -17,6 +17,7 @@ import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.GroupManager
 import io.nekohasekai.sagernet.database.ProfileManager
 import io.nekohasekai.sagernet.database.ProxyEntity
+import io.nekohasekai.sagernet.database.ProxyGroup
 import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.databinding.LayoutProgressListBinding
 import io.nekohasekai.sagernet.ktx.*
@@ -175,10 +176,31 @@ class TestDialog(private val fragment: Fragment) {
 
 fun ConfigurationFragment.pingTestImpl(fragment: ConfigurationFragment, icmpPing: Boolean) {
     if (DataStore.runningTest) return else DataStore.runningTest = true
+    fragment.viewLifecycleOwner.lifecycleScope.launch {
+        var started = false
+        try {
+            val group = DataStore.currentGroup()
+            startPingTest(fragment, icmpPing, group)
+            started = true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logs.w(e)
+            (fragment.activity as? MainActivity)?.snackbar(e.readableMessage)?.show()
+        } finally {
+            if (!started) DataStore.runningTest = false
+        }
+    }
+}
+
+private fun startPingTest(
+    fragment: ConfigurationFragment,
+    icmpPing: Boolean,
+    group: ProxyGroup,
+) {
     val test = TestDialog(fragment)
     val dialog = test.builder.show()
     val testJobs = mutableListOf<Job>()
-    val group = DataStore.currentGroup()
 
     val mainJob = fragment.viewLifecycleOwner.lifecycleScope.launch(
         Dispatchers.Default, start = CoroutineStart.LAZY
@@ -322,7 +344,7 @@ fun ConfigurationFragment.pingTestImpl(fragment: ConfigurationFragment, icmpPing
                     Logs.w(e)
                 }
             }
-            GroupManager.postReload(DataStore.currentGroupId())
+            GroupManager.postReload(group.id)
             DataStore.runningTest = false
         }
     }
@@ -347,10 +369,31 @@ fun ConfigurationFragment.urlTestImpl(
     profileIds: Set<Long>? = null,
 ) {
     if (DataStore.runningTest) return else DataStore.runningTest = true
+    fragment.viewLifecycleOwner.lifecycleScope.launch {
+        var started = false
+        try {
+            val group = DataStore.currentGroup()
+            startUrlTest(fragment, profileIds, group)
+            started = true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logs.w(e)
+            (fragment.activity as? MainActivity)?.snackbar(e.readableMessage)?.show()
+        } finally {
+            if (!started) DataStore.runningTest = false
+        }
+    }
+}
+
+private fun startUrlTest(
+    fragment: ConfigurationFragment,
+    profileIds: Set<Long>?,
+    group: ProxyGroup,
+) {
     val test = TestDialog(fragment)
     val dialog = test.builder.show()
     val testJobs = mutableListOf<Job>()
-    val group = DataStore.currentGroup()
 
     val mainJob = fragment.viewLifecycleOwner.lifecycleScope.launch(
         Dispatchers.Default, start = CoroutineStart.LAZY
@@ -416,7 +459,7 @@ fun ConfigurationFragment.urlTestImpl(
                     Logs.w(e)
                 }
             }
-            GroupManager.postReload(DataStore.currentGroupId())
+            GroupManager.postReload(group.id)
             DataStore.runningTest = false
         }
     }

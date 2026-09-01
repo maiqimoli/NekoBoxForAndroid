@@ -5,6 +5,7 @@ import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.ProfileManager
+import io.nekohasekai.sagernet.ktx.onIoDispatcher
 import io.nekohasekai.sagernet.ktx.runOnMainDispatcher
 
 class SwitchActivity : ThemedActivity(R.layout.layout_empty),
@@ -27,8 +28,10 @@ class SwitchActivity : ThemedActivity(R.layout.layout_empty),
         val old = DataStore.selectedProxy
         DataStore.selectedProxy = profileId
         runOnMainDispatcher {
-            ProfileManager.postUpdate(old, true)
-            ProfileManager.postUpdate(profileId, true)
+            val oldProfile = onIoDispatcher { ProfileManager.getProfile(old) }
+            oldProfile?.let { ProfileManager.postUpdate(it, true) }
+            val newProfile = onIoDispatcher { ProfileManager.getProfile(profileId) }
+            newProfile?.let { ProfileManager.postUpdate(it, true) }
         }
         SagerNet.reloadService()
         finish()

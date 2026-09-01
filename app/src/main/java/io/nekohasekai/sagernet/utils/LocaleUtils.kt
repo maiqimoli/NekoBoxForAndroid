@@ -42,7 +42,7 @@ object LocaleUtils {
 
     private fun getLanguage(context: Context): String {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_LANGUAGE, LANGUAGE_ZH_CN)
-            ?: LANGUAGE_ZH_CN
+            .getString(KEY_LANGUAGE, LANGUAGE_SYSTEM)
+            ?: LANGUAGE_SYSTEM
     }
 }

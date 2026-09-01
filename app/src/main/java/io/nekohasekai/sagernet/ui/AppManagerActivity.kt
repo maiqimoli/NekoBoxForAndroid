@@ -16,7 +16,7 @@ import android.view.ViewGroup
 import android.widget.Filter
 import android.widget.Filterable
 import androidx.annotation.UiThread
-import androidx.core.util.contains
+import androidx.core.util.size
 import androidx.core.util.set
 import androidx.core.view.ViewCompat
 import androidx.core.widget.addTextChangedListener
@@ -36,14 +36,13 @@ import io.nekohasekai.sagernet.databinding.LayoutAppsItemBinding
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ktx.crossFadeFrom
-import io.nekohasekai.sagernet.ktx.onMainDispatcher
-import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.utils.PackageCache
 import io.nekohasekai.sagernet.utils.AppIconCache
 import io.nekohasekai.sagernet.widget.ListListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.matsuri.nb4a.utils.NGUtil
 import kotlin.coroutines.coroutineContext
@@ -107,12 +106,12 @@ class AppManagerActivity : ThemedActivity() {
         FastScrollRecyclerView.SectionedAdapter {
         var filteredApps = apps
 
-        suspend fun reload() {
+        suspend fun load(selectedUids: Set<Int>): List<ProxiedApp> {
             PackageCache.reload()
-            apps = cachedApps.mapNotNull { (packageName, packageInfo) ->
+            return cachedApps.mapNotNull { (packageName, packageInfo) ->
                 coroutineContext[Job]!!.ensureActive()
                 packageInfo.applicationInfo?.let { ProxiedApp(packageManager, it, packageName) }
-            }.sortedWith(compareBy({ !isProxiedApp(it) }, { it.name.toString() }))
+            }.sortedWith(compareBy({ it.uid !in selectedUids }, { it.name.toString() }))
         }
 
         override fun onBindViewHolder(holder: AppViewHolder, position: Int) =
@@ -179,6 +178,12 @@ class AppManagerActivity : ThemedActivity() {
 
     private fun isProxiedApp(app: ProxiedApp) = proxiedUids[app.uid]
 
+    private fun selectedUids() = buildSet {
+        for (index in 0 until proxiedUids.size) {
+            if (proxiedUids.valueAt(index)) add(proxiedUids.keyAt(index))
+        }
+    }
+
     @UiThread
     @Suppress("DEPRECATION") // launchWhenCreated 为内联，块内含函数声明，无法用 repeatOnLifecycle 迁移
     private fun loadApps() {
@@ -186,7 +191,8 @@ class AppManagerActivity : ThemedActivity() {
         loader = lifecycleScope.launchWhenCreated {
             loading.crossFadeFrom(binding.list)
             val adapter = binding.list.adapter as AppsAdapter
-            withContext(Dispatchers.IO) { adapter.reload() }
+            val selectedUids = selectedUids()
+            apps = withContext(Dispatchers.IO) { adapter.load(selectedUids) }
             adapter.filter.filter(binding.search.text?.toString() ?: "")
             if (apps.isEmpty()) {
                 binding.list.visibility = View.GONE
@@ -268,34 +274,36 @@ class AppManagerActivity : ThemedActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.action_invert_selections -> {
-                runOnDefaultDispatcher {
-                    val proxiedUidsOld = proxiedUids.clone()
-                    for (app in apps) {
-                        if (proxiedUidsOld.contains(app.uid)) {
-                            proxiedUids.delete(app.uid)
-                        } else {
-                            proxiedUids[app.uid] = true
-                        }
+                lifecycleScope.launch {
+                    val previousUids = selectedUids()
+                    val appSnapshot = apps
+                    val nextUids = withContext(Dispatchers.Default) {
+                        appSnapshot.asSequence().map { it.uid }.filterNot(previousUids::contains).toSet()
                     }
-                    DataStore.individual = apps.filter { isProxiedApp(it) }
+                    proxiedUids.clear()
+                    nextUids.forEach { proxiedUids[it] = true }
+                    DataStore.individual = appSnapshot.filter { it.uid in nextUids }
                         .joinToString("\n") { it.packageName }
-                    apps = apps.sortedWith(compareBy({ !isProxiedApp(it) }, { it.name.toString() }))
-                    onMainDispatcher {
-                        appsAdapter.filter.filter(binding.search.text?.toString() ?: "")
+                    apps = withContext(Dispatchers.Default) {
+                        appSnapshot.sortedWith(
+                            compareBy({ it.uid !in nextUids }, { it.name.toString() })
+                        )
                     }
+                    appsAdapter.filter.filter(binding.search.text?.toString() ?: "")
                 }
 
                 return true
             }
 
             R.id.action_clear_selections -> {
-                runOnDefaultDispatcher {
+                lifecycleScope.launch {
                     proxiedUids.clear()
                     DataStore.individual = ""
-                    apps = apps.sortedWith(compareBy({ !isProxiedApp(it) }, { it.name.toString() }))
-                    onMainDispatcher {
-                        appsAdapter.filter.filter(binding.search.text?.toString() ?: "")
+                    val appSnapshot = apps
+                    apps = withContext(Dispatchers.Default) {
+                        appSnapshot.sortedBy { it.name.toString() }
                     }
+                    appsAdapter.filter.filter(binding.search.text?.toString() ?: "")
                 }
             }
 

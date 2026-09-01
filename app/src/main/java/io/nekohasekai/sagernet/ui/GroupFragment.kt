@@ -117,11 +117,13 @@ class GroupFragment : ToolbarFragment(R.layout.layout_group),
                 MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.confirm)
                     .setMessage(R.string.update_all_subscription)
                     .setPositiveButton(R.string.yes) { _, _ ->
-                        SagerDatabase.groupDao.allGroups()
-                            .filter { it.type == GroupType.SUBSCRIPTION }
-                            .forEach {
-                                GroupUpdater.startUpdate(it, true)
-                            }
+                        runOnLifecycleDispatcher {
+                            SagerDatabase.groupDao.allGroups()
+                                .filter { it.type == GroupType.SUBSCRIPTION }
+                                .forEach {
+                                    GroupUpdater.startUpdate(it, true)
+                                }
+                        }
                     }
                     .setNegativeButton(R.string.no, null)
                     .show()
@@ -262,10 +264,13 @@ class GroupFragment : ToolbarFragment(R.layout.layout_group),
         override suspend fun groupRemoved(groupId: Long) {
             val index = groupList.indexOfFirst { it.id == groupId }
             if (index == -1) return
+            val shouldReload = onIoDispatcher {
+                SagerDatabase.groupDao.allGroups().size <= 2
+            }
             onMainDispatcher {
                 undoManager.flush()
-                if (SagerDatabase.groupDao.allGroups().size <= 2) {
-                    runOnDefaultDispatcher {
+                if (shouldReload) {
+                    runOnLifecycleDispatcher {
                         reload()
                     }
                 } else {

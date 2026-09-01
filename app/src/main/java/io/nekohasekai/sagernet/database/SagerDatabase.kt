@@ -79,7 +79,6 @@ abstract class SagerDatabase : RoomDatabase() {
             Room.databaseBuilder(SagerNet.application, SagerDatabase::class.java, Key.DB_PROFILE)
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .setJournalMode(JournalMode.TRUNCATE)
-                .allowMainThreadQueries()
                 .enableMultiInstanceInvalidation()
                 .build()
         }

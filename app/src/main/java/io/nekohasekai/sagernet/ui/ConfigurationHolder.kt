@@ -11,6 +11,7 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import io.nekohasekai.sagernet.GroupType
@@ -23,8 +24,12 @@ import io.nekohasekai.sagernet.database.ProxyEntity
 import io.nekohasekai.sagernet.fmt.toUniversalLink
 import io.nekohasekai.sagernet.ktx.*
 import io.nekohasekai.sagernet.widget.QRCodeDialog
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import moe.matsuri.nb4a.Protocols
 import moe.matsuri.nb4a.Protocols.getProtocolColor
 
@@ -368,6 +373,33 @@ import moe.matsuri.nb4a.Protocols.getProtocolColor
                     .show()
             }
 
+            private fun exportConfig(toFile: Boolean) {
+                val target = entity
+                gf.viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val config = target.exportConfig()
+                        withContext(Dispatchers.Main.immediate) {
+                            if (toFile) {
+                                DataStore.serverConfig = config.first
+                                gf.startFilesForResult(
+                                    (gf.parentFragment as ConfigurationFragment).exportConfig,
+                                    config.second,
+                                )
+                            } else {
+                                export(config.first)
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logs.w(e)
+                        withContext(Dispatchers.Main.immediate) {
+                            (gf.activity as? MainActivity)?.snackbar(e.readableMessage)?.show()
+                        }
+                    }
+                }
+            }
+
             override fun onMenuItemClick(item: MenuItem): Boolean {
                 try {
                     currentName = entity.displayName()!!
@@ -409,14 +441,8 @@ import moe.matsuri.nb4a.Protocols.getProtocolColor
                             entity.requireBean().toUniversalLink()
                         )
 
-                        R.id.action_config_export_clipboard -> export(entity.exportConfig().first)
-                        R.id.action_config_export_file -> {
-                            val cfg = entity.exportConfig()
-                            DataStore.serverConfig = cfg.first
-                            gf.startFilesForResult(
-                                (gf.parentFragment as ConfigurationFragment).exportConfig, cfg.second
-                            )
-                        }
+                        R.id.action_config_export_clipboard -> exportConfig(toFile = false)
+                        R.id.action_config_export_file -> exportConfig(toFile = true)
                     }
                 } catch (e: Exception) {
                     Logs.w(e)

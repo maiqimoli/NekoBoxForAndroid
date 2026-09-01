@@ -52,13 +52,12 @@ data class RuleEntity(
         }
     }
 
-    fun displayOutbound(): String {
+    fun displayOutbound(profileName: String? = null): String {
         return when (outbound) {
             0L -> app.getString(R.string.route_proxy)
             -1L -> app.getString(R.string.route_bypass)
             -2L -> app.getString(R.string.route_block)
-            else -> ProfileManager.getProfile(outbound)?.displayName()
-                ?: app.getString(R.string.error_title)
+            else -> profileName ?: app.getString(R.string.error_title)
         }
     }
 

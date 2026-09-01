@@ -9,6 +9,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.nekohasekai.sagernet.GroupType
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
+import io.nekohasekai.sagernet.aidl.TrafficData
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.GroupManager
 import io.nekohasekai.sagernet.database.ProfileManager
@@ -205,30 +206,33 @@ import moe.matsuri.nb4a.Protocols
             }
 
             R.id.action_update_subscription -> {
-                val group = DataStore.currentGroup()
-                if (group.type != GroupType.SUBSCRIPTION) {
-                    snackbar(R.string.group_not_subscription).show()
-                    Logs.e("onMenuItemClick: Group(${group.displayName()}) is not subscription")
-                } else {
-                    runOnLifecycleDispatcher {
+                runOnLifecycleDispatcher {
+                    val group = DataStore.currentGroup()
+                    if (group.type != GroupType.SUBSCRIPTION) {
+                        Logs.e("onMenuItemClick: Group(${group.displayName()}) is not subscription")
+                        onMainDispatcher {
+                            snackbar(R.string.group_not_subscription).show()
+                        }
+                    } else {
                         GroupUpdater.startUpdate(group, true)
                     }
                 }
             }
 
             R.id.action_clear_traffic_statistics -> {
-                runOnDefaultDispatcher {
-                    val profiles = SagerDatabase.proxyDao.getByGroup(DataStore.currentGroupId())
-                    val toClear = mutableListOf<ProxyEntity>()
-                    if (profiles.isNotEmpty()) for (profile in profiles) {
-                        if (profile.tx != 0L || profile.rx != 0L) {
-                            profile.tx = 0
-                            profile.rx = 0
-                            toClear.add(profile)
+                val context = requireContext()
+                val service = (requireActivity() as MainActivity).connection.service
+                runOnLifecycleDispatcher {
+                    val groupId = DataStore.currentGroupId()
+                    val ids = SagerDatabase.proxyDao.getIdsByGroup(groupId).toLongArray()
+                    if (ids.isEmpty()) return@runOnLifecycleDispatcher
+
+                    if (requestServiceClearTrafficStats(context, service, ids)) {
+                        ids.forEach { id ->
+                            ProfileManager.postUpdate(TrafficData(id = id, tx = 0L, rx = 0L))
                         }
-                    }
-                    if (toClear.isNotEmpty()) {
-                        ProfileManager.updateProfile(toClear)
+                    } else {
+                        Logs.w("Traffic statistics reset did not complete")
                     }
                 }
             }

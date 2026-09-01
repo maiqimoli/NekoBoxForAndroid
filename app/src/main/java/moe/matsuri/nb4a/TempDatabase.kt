@@ -12,6 +12,7 @@ abstract class TempDatabase : RoomDatabase() {
     companion object {
         private val instance by lazy {
             Room.inMemoryDatabaseBuilder(SagerNet.application, TempDatabase::class.java)
+                // Ephemeral PreferenceDataStore backing; its AndroidX contract is synchronous.
                 .allowMainThreadQueries()
                 .build()
         }

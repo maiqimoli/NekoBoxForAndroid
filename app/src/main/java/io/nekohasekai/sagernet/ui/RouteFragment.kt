@@ -128,11 +128,31 @@ class RouteFragment : ToolbarFragment(R.layout.layout_route), Toolbar.OnMenuItem
     inner class RuleAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), ProfileManager.RuleListener, UndoSnackbarManager.Interface<RuleEntity> {
 
         val ruleList = ArrayList<RuleEntity>()
+        private var outboundNames: Map<Long, String> = emptyMap()
+
+        private suspend fun loadOutboundName(outbound: Long): String? {
+            if (outbound <= 0L) return null
+            return onIoDispatcher {
+                ProfileManager.getProfile(outbound)?.displayName()
+            }
+        }
+
         suspend fun reload() {
             val rules = ProfileManager.getRules()
+            val outboundIds = rules.asSequence()
+                .map { it.outbound }
+                .filter { it > 0L }
+                .distinct()
+                .toList()
+            val names = onIoDispatcher {
+                ProfileManager.getProfiles(outboundIds).mapNotNull { profile ->
+                    profile.displayName()?.let { profile.id to it }
+                }.toMap()
+            }
             ruleListView.post {
                 ruleList.clear()
                 ruleList.addAll(rules)
+                outboundNames = names
                 ruleAdapter.notifyDataSetChanged()
             }
         }
@@ -223,18 +243,26 @@ class RouteFragment : ToolbarFragment(R.layout.layout_route), Toolbar.OnMenuItem
         }
 
         override suspend fun onAdd(rule: RuleEntity) {
+            val outboundName = loadOutboundName(rule.outbound)
             ruleListView.post {
                 ruleList.add(rule)
+                if (outboundName != null) {
+                    outboundNames = outboundNames + (rule.outbound to outboundName)
+                }
                 ruleAdapter.notifyItemInserted(ruleList.size)
                 needReload()
             }
         }
 
         override suspend fun onUpdated(rule: RuleEntity) {
-            val index = ruleList.indexOfFirst { it.id == rule.id }
-            if (index == -1) return
+            val outboundName = loadOutboundName(rule.outbound)
             ruleListView.post {
+                val index = ruleList.indexOfFirst { it.id == rule.id }
+                if (index == -1) return@post
                 ruleList[index] = rule
+                if (outboundName != null) {
+                    outboundNames = outboundNames + (rule.outbound to outboundName)
+                }
                 ruleAdapter.notifyItemChanged(index + 1)
                 needReload()
             }
@@ -283,7 +311,7 @@ class RouteFragment : ToolbarFragment(R.layout.layout_route), Toolbar.OnMenuItem
                 rule = ruleEntity
                 profileName.text = rule.displayName()
                 profileType.text = rule.mkSummary()
-                routeOutbound.text = rule.displayOutbound()
+                routeOutbound.text = rule.displayOutbound(outboundNames[rule.outbound])
                 itemView.setOnClickListener {
                     enableSwitch.performClick()
                 }

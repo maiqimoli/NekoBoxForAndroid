@@ -306,21 +306,28 @@ class AssetsActivity : ThemedActivity() {
 
             response = client.newRequest().apply {
                 setURL(browserDownloadUrl)
+                allowLargeResponse()
             }.execute()
 
             val cacheFile = File(file.parentFile, file.name + ".tmp")
             cacheFile.parentFile?.mkdirs()
 
-            response.writeTo(cacheFile.canonicalPath)
+            try {
+                response.writeTo(cacheFile.canonicalPath)
 
-            if (fileName.endsWith(".xz")) {
-                Libcore.unxz(cacheFile.absolutePath, file.absolutePath)
+                if (fileName.endsWith(".xz")) {
+                    Libcore.unxz(cacheFile.absolutePath, file.absolutePath)
+                } else {
+                    check(cacheFile.renameTo(file)) {
+                        "Failed to publish downloaded asset ${file.name}"
+                    }
+                }
+
+                // Only advance the marker after the new asset is fully published.
+                versionFile.writeText(tagName)
+            } finally {
                 cacheFile.delete()
-            } else {
-                cacheFile.renameTo(file)
             }
-
-            versionFile.writeText(tagName)
 
             adapter.reloadAssets()
 

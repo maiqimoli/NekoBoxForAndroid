@@ -13,6 +13,8 @@ import io.nekohasekai.sagernet.database.ProxyGroup
 import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.ktx.dp2px
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 分组 ViewPager 适配器。抽取自 ConfigurationFragment 以控制单文件规模。
@@ -160,7 +162,10 @@ class GroupPagerAdapter(private val fragment: ConfigurationFragment) :
 
     override suspend fun onRemoved(groupId: Long, profileId: Long) {
         val group = groupList.find { it.id == groupId } ?: return
-        if (group.ungrouped && SagerDatabase.proxyDao.countByGroup(groupId) == 0L) {
+        val groupIsEmpty = group.ungrouped && withContext(Dispatchers.IO) {
+            SagerDatabase.proxyDao.countByGroup(groupId) == 0L
+        }
+        if (groupIsEmpty) {
             reload()
         }
     }
