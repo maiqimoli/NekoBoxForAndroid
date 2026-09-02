@@ -4,12 +4,15 @@ import android.os.SystemClock
 import android.text.SpannableStringBuilder
 import android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
 import android.text.style.ForegroundColorSpan
-import androidx.core.view.isVisible
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
-import io.nekohasekai.sagernet.aidl.TrafficData
 import io.nekohasekai.sagernet.bg.proto.UrlTest
 import io.nekohasekai.sagernet.bg.proto.LATENCY_SAMPLE_COUNT
 import io.nekohasekai.sagernet.bg.proto.medianLatency
@@ -23,11 +26,11 @@ import io.nekohasekai.sagernet.databinding.LayoutProgressListBinding
 import io.nekohasekai.sagernet.ktx.*
 import io.nekohasekai.sagernet.plugin.PluginManager
 import moe.matsuri.nb4a.ui.ConnectionTestNotification
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -54,51 +57,116 @@ internal fun connectionTestWorkerCount(
 /**
  * 连接测试进度对话框。抽取自 ConfigurationFragment 以控制单文件规模。
  */
-class TestDialog(private val fragment: Fragment) {
+internal class TestDialog(
+    fragment: Fragment,
+    val token: ConnectionTestToken,
+) : DefaultLifecycleObserver {
 
-    private val context get() = fragment.requireContext()
-    private val binding = LayoutProgressListBinding.inflate(fragment.layoutInflater)
-    val builder = MaterialAlertDialogBuilder(context).setView(binding.root)
-        .setPositiveButton(R.string.minimize) { _, _ ->
-            minimize()
-        }
-        .setNegativeButton(android.R.string.cancel) { _, _ ->
-            cancel()
-        }
-        .setCancelable(false)
+    @Volatile
+    private var fragment: Fragment? = fragment
+    private var binding: LayoutProgressListBinding? =
+        LayoutProgressListBinding.inflate(fragment.layoutInflater)
+    private var dialog: AlertDialog? = null
+    private var observedLifecycle: Lifecycle? = null
 
     lateinit var cancel: () -> Unit
     lateinit var minimize: () -> Unit
 
     val dialogStatus = AtomicInteger(0) // 1: hidden 2: cancelled
+    @Volatile
     var notification: ConnectionTestNotification? = null
 
-    val results: MutableSet<io.nekohasekai.sagernet.database.ProxyEntity> =
-        ConcurrentHashMap.newKeySet()
+    val results = ConcurrentHashMap<Long, CompletedConnectionTest>()
+    @Volatile
     var proxyN = 0
     val finishedN = AtomicInteger(0)
-    private val testingIds = ConcurrentHashMap.newKeySet<Long>()
-    val completedIds = ConcurrentHashMap.newKeySet<Long>()
 
-    fun start(profile: io.nekohasekai.sagernet.database.ProxyEntity) {
-        testingIds.add(profile.id)
-        (fragment as? ConfigurationFragment)?.updateProfileTesting(profile.id, true)
+    fun show() {
+        val owner = fragment ?: return
+        val currentBinding = binding ?: return
+        dialog = MaterialAlertDialogBuilder(owner.requireContext())
+            .setView(currentBinding.root)
+            .setPositiveButton(R.string.minimize) { _, _ ->
+                minimize()
+            }
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                cancel()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    fun observeViewLifecycle() {
+        val owner = fragment ?: return
+        owner.viewLifecycleOwner.lifecycle.also { lifecycle ->
+            observedLifecycle = lifecycle
+            lifecycle.addObserver(this)
+        }
+    }
+
+    override fun onDestroy(owner: LifecycleOwner) {
+        if (dialogStatus.get() == 0) cancel()
+        detachUi()
+    }
+
+    fun hide() {
+        dialog?.hide()
+    }
+
+    fun dismissDialog() {
+        dialog?.dismiss()
+        dialog = null
+        binding = null
+    }
+
+    fun detachUi() {
+        val owner = fragment
+        val testingIds = ConnectionTestCoordinator.shared.detachUi(token)
+        if (owner is ConfigurationFragment) {
+            testingIds.forEach(owner::notifyProfileTestingChanged)
+        }
+        observedLifecycle?.removeObserver(this)
+        observedLifecycle = null
+        dismissDialog()
+        fragment = null
+    }
+
+    fun notifyProfileTestingChanged(profileIds: Collection<Long>) {
+        val owner = fragment as? ConfigurationFragment ?: return
+        profileIds.forEach(owner::notifyProfileTestingChanged)
+    }
+
+    fun start(profile: ProxyEntity): Boolean {
+        return when (
+            ConnectionTestCoordinator.shared.profileStarted(token, profile.id)
+        ) {
+            ConnectionTestStartDecision.REJECTED -> false
+            ConnectionTestStartDecision.ACCEPTED_HIDDEN -> true
+            ConnectionTestStartDecision.ACCEPTED_VISIBLE -> {
+                (fragment as? ConfigurationFragment)?.notifyProfileTestingChanged(profile.id)
+                true
+            }
+        }
     }
 
     fun update(
-        profile: io.nekohasekai.sagernet.database.ProxyEntity,
+        profile: ProxyEntity,
         method: ProfileTestMethod,
-    ) {
-        testingIds.remove(profile.id)
-        ProfileUiState.markTestedPending(profile.id, method)
-        completedIds.add(profile.id)
-        (fragment as? ConfigurationFragment)?.updateProfileTesting(profile.id, false)
-        if (dialogStatus.get() != 2) {
-            results.add(profile)
+    ): Boolean {
+        val completion = ConnectionTestCoordinator.shared.profileCompleted(token, profile.id)
+        val completedAt = completion.acceptedAtSeconds ?: return false
+        results[profile.id] = CompletedConnectionTest(
+            profileId = profile.id,
+            status = profile.status,
+            ping = profile.ping,
+            error = profile.error,
+            record = ProfileTestRecord(completedAt, method),
+        )
+        if (completion.testingStateChanged) {
+            (fragment as? ConfigurationFragment)?.notifyProfileTestingChanged(profile.id)
         }
+        val progress = finishedN.addAndGet(1)
         runOnMainDispatcher {
-            val ctx = fragment.context ?: return@runOnMainDispatcher
-            val progress = finishedN.addAndGet(1)
             val status = dialogStatus.get()
             notification?.updateNotification(
                 progress,
@@ -106,7 +174,10 @@ class TestDialog(private val fragment: Fragment) {
                 progress >= proxyN || status == 2
             )
             if (status >= 1) return@runOnMainDispatcher
-            if (!fragment.isAdded) return@runOnMainDispatcher
+            val owner = fragment ?: return@runOnMainDispatcher
+            val currentBinding = binding ?: return@runOnMainDispatcher
+            val ctx = owner.context ?: return@runOnMainDispatcher
+            if (!owner.isAdded) return@runOnMainDispatcher
 
             // refresh dialog
 
@@ -120,12 +191,12 @@ class TestDialog(private val fragment: Fragment) {
                 }
 
                 0 -> {
-                    profileStatusText = fragment.getString(R.string.connection_test_testing)
+                    profileStatusText = owner.getString(R.string.connection_test_testing)
                     profileStatusColor = ctx.getColorAttr(android.R.attr.textColorSecondary)
                 }
 
                 1 -> {
-                    profileStatusText = fragment.getString(R.string.available, profile.ping)
+                    profileStatusText = owner.getString(R.string.available, profile.ping)
                     profileStatusColor = ctx.getColour(R.color.material_green_500)
                 }
 
@@ -138,7 +209,7 @@ class TestDialog(private val fragment: Fragment) {
                     val err = profile.error ?: ""
                     val msg = Protocols.genFriendlyMsg(err)
                     profileStatusText =
-                        if (msg != err) msg else fragment.getString(R.string.unavailable)
+                        if (msg != err) msg else owner.getString(R.string.unavailable)
                     profileStatusColor = ctx.getColour(R.color.material_red_500)
                 }
             }
@@ -160,27 +231,79 @@ class TestDialog(private val fragment: Fragment) {
                 append("\n")
             }
 
-            binding.nowTesting.text = text
-            binding.progress.text = "$progress / $proxyN"
+            currentBinding.nowTesting.text = text
+            currentBinding.progress.text = "$progress / $proxyN"
         }
+        return true
     }
 
-    fun clearTesting() {
-        val owner = fragment as? ConfigurationFragment ?: return
-        val ids = testingIds.toList()
-        ids.forEach { owner.updateProfileTesting(it, false) }
-        ids.forEach(testingIds::remove)
+    fun finishNotification() {
+        notification?.updateNotification(finishedN.get(), proxyN, true)
+        notification = null
     }
 
 }
 
-fun ConfigurationFragment.pingTestImpl(fragment: ConfigurationFragment, icmpPing: Boolean) {
-    if (DataStore.runningTest) return else DataStore.runningTest = true
-    fragment.viewLifecycleOwner.lifecycleScope.launch {
+private fun finishConnectionTest(
+    test: TestDialog,
+    mainJob: Job,
+    group: ProxyGroup,
+) {
+    val coordinator = ConnectionTestCoordinator.shared
+    val testingIds = coordinator.beginFinish(test.token) ?: return
+    test.dialogStatus.set(2)
+    test.notifyProfileTestingChanged(testingIds)
+    mainJob.cancel()
+    test.dismissDialog()
+    SagerNet.application.applicationScope.launch(Dispatchers.Default) {
+        try {
+            mainJob.join()
+            val persistedRecords = persistConnectionTestResults(
+                results = test.results.values,
+                write = { result ->
+                    SagerDatabase.proxyDao.updateConnectionTestResult(
+                        profileId = result.profileId,
+                        status = result.status,
+                        ping = result.ping,
+                        error = result.error,
+                    )
+                },
+                onFailure = { _, error -> Logs.w(error) },
+            )
+            runCatching {
+                ProfileUiState.recordPersistedTests(persistedRecords)
+            }.onFailure { Logs.w(it) }
+            persistedRecords.keys.forEach { profileId ->
+                runCatching {
+                    // Reload the current row before notifying listeners. Tests run against a
+                    // snapshot that may predate an edit or drag operation.
+                    ProfileManager.postUpdate(profileId)
+                }.onFailure { Logs.w(it) }
+            }
+            runCatching {
+                GroupManager.postReload(group.id)
+            }.onFailure { Logs.w(it) }
+        } finally {
+            runCatching { test.finishNotification() }.onFailure { Logs.w(it) }
+            runCatching {
+                onMainDispatcher { test.detachUi() }
+            }.onFailure { Logs.w(it) }
+            coordinator.endFinish(test.token)
+        }
+    }
+}
+
+fun ConfigurationFragment.pingTestImpl(
+    fragment: ConfigurationFragment,
+    icmpPing: Boolean,
+): Boolean {
+    val coordinator = ConnectionTestCoordinator.shared
+    val token = coordinator.tryBegin() ?: return false
+    fragment.viewLifecycleOwner.lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) {
         var started = false
         try {
             val group = DataStore.currentGroup()
-            startPingTest(fragment, icmpPing, group)
+            startPingTest(fragment, icmpPing, group, token)
             started = true
         } catch (e: CancellationException) {
             throw e
@@ -188,21 +311,23 @@ fun ConfigurationFragment.pingTestImpl(fragment: ConfigurationFragment, icmpPing
             Logs.w(e)
             (fragment.activity as? MainActivity)?.snackbar(e.readableMessage)?.show()
         } finally {
-            if (!started) DataStore.runningTest = false
+            if (!started) coordinator.endFinish(token)
         }
     }
+    return true
 }
 
 private fun startPingTest(
     fragment: ConfigurationFragment,
     icmpPing: Boolean,
     group: ProxyGroup,
+    token: ConnectionTestToken,
 ) {
-    val test = TestDialog(fragment)
-    val dialog = test.builder.show()
+    val test = TestDialog(fragment, token)
+    test.show()
     val testJobs = mutableListOf<Job>()
 
-    val mainJob = fragment.viewLifecycleOwner.lifecycleScope.launch(
+    val mainJob = SagerNet.application.applicationScope.launch(
         Dispatchers.Default, start = CoroutineStart.LAZY
     ) {
         val profilesList = SagerDatabase.proxyDao.getByGroup(group.id).filter {
@@ -231,7 +356,7 @@ private fun startPingTest(
 
                     profile.status = 0
                     profile.error = null
-                    test.start(profile)
+                    if (!test.start(profile)) break
                     var address = profile.requireBean().serverAddress
                     if (!address.isIpAddress()) {
                         try {
@@ -290,22 +415,22 @@ private fun startPingTest(
 
                         if (icmpPing) {
                             profile.status = 2
-                            profile.error = fragment.getString(R.string.connection_test_unreachable)
+                            profile.error = app.getString(R.string.connection_test_unreachable)
                         } else {
                             profile.status = 2
                             when {
                                 !message.contains("failed:") -> profile.error =
-                                    fragment.getString(R.string.connection_test_timeout)
+                                    app.getString(R.string.connection_test_timeout)
 
                                 else -> when {
                                     message.contains("ECONNREFUSED") -> {
                                         profile.error =
-                                            fragment.getString(R.string.connection_test_refused)
+                                            app.getString(R.string.connection_test_refused)
                                     }
 
                                     message.contains("ENETUNREACH") -> {
                                         profile.error =
-                                            fragment.getString(R.string.connection_test_unreachable)
+                                            app.getString(R.string.connection_test_unreachable)
                                     }
 
                                     else -> {
@@ -322,44 +447,21 @@ private fun startPingTest(
         }
 
         testJobs.joinAll()
-
-        runOnMainDispatcher {
-            test.cancel()
-        }
     }
     test.cancel = cancel@{
-        if (test.dialogStatus.getAndSet(2) == 2) return@cancel
-        mainJob.cancel()
-        dialog.dismiss()
-        runOnDefaultDispatcher {
-            mainJob.join()
-            onMainDispatcher {
-                test.clearTesting()
-            }
-            ProfileUiState.flushTested(test.completedIds)
-            test.results.forEach {
-                try {
-                    ProfileManager.updateProfile(it)
-                } catch (e: Exception) {
-                    Logs.w(e)
-                }
-            }
-            GroupManager.postReload(group.id)
-            DataStore.runningTest = false
-        }
+        finishConnectionTest(test, mainJob, group)
     }
     test.minimize = minimize@{
         if (!test.dialogStatus.compareAndSet(0, 1)) return@minimize
         test.notification = ConnectionTestNotification(
-            dialog.context,
-            "[${group.displayName()}] ${fragment.getString(R.string.connection_test)}"
+            SagerNet.application,
+            "[${group.displayName()}] ${SagerNet.application.getString(R.string.connection_test)}"
         )
-        dialog.hide()
+        test.hide()
     }
-    mainJob.invokeOnCompletion { cause ->
-        if (cause != null && test.dialogStatus.get() != 2) {
-            runOnMainDispatcher { test.cancel() }
-        }
+    test.observeViewLifecycle()
+    mainJob.invokeOnCompletion {
+        runOnMainDispatcher { test.cancel() }
     }
     mainJob.start()
 }
@@ -367,13 +469,14 @@ private fun startPingTest(
 fun ConfigurationFragment.urlTestImpl(
     fragment: ConfigurationFragment,
     profileIds: Set<Long>? = null,
-) {
-    if (DataStore.runningTest) return else DataStore.runningTest = true
-    fragment.viewLifecycleOwner.lifecycleScope.launch {
+): Boolean {
+    val coordinator = ConnectionTestCoordinator.shared
+    val token = coordinator.tryBegin() ?: return false
+    fragment.viewLifecycleOwner.lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) {
         var started = false
         try {
             val group = DataStore.currentGroup()
-            startUrlTest(fragment, profileIds, group)
+            startUrlTest(fragment, profileIds, group, token)
             started = true
         } catch (e: CancellationException) {
             throw e
@@ -381,21 +484,23 @@ fun ConfigurationFragment.urlTestImpl(
             Logs.w(e)
             (fragment.activity as? MainActivity)?.snackbar(e.readableMessage)?.show()
         } finally {
-            if (!started) DataStore.runningTest = false
+            if (!started) coordinator.endFinish(token)
         }
     }
+    return true
 }
 
 private fun startUrlTest(
     fragment: ConfigurationFragment,
     profileIds: Set<Long>?,
     group: ProxyGroup,
+    token: ConnectionTestToken,
 ) {
-    val test = TestDialog(fragment)
-    val dialog = test.builder.show()
+    val test = TestDialog(fragment, token)
+    test.show()
     val testJobs = mutableListOf<Job>()
 
-    val mainJob = fragment.viewLifecycleOwner.lifecycleScope.launch(
+    val mainJob = SagerNet.application.applicationScope.launch(
         Dispatchers.Default, start = CoroutineStart.LAZY
     ) {
         val profilesList = SagerDatabase.proxyDao.getByGroup(group.id).filter {
@@ -415,7 +520,7 @@ private fun startUrlTest(
                     val profile = profiles.poll() ?: break
                     profile.status = 0
                     profile.error = null
-                    test.start(profile)
+                    if (!test.start(profile)) break
 
                     try {
                         val result = urlTest.doTest(profile)
@@ -431,50 +536,30 @@ private fun startUrlTest(
                         profile.error = e.readableMessage
                     }
 
+                    // UrlTest may be a blocking native call and return only after cancellation.
+                    // Do not publish a stale result or mark it as freshly tested in that case.
+                    coroutineContext.ensureActive()
                     test.update(profile, ProfileTestMethod.URL)
                 }
             })
         }
 
         testJobs.joinAll()
-
-        runOnMainDispatcher {
-            test.cancel()
-        }
     }
     test.cancel = cancel@{
-        if (test.dialogStatus.getAndSet(2) == 2) return@cancel
-        mainJob.cancel()
-        dialog.dismiss()
-        runOnDefaultDispatcher {
-            mainJob.join()
-            onMainDispatcher {
-                test.clearTesting()
-            }
-            ProfileUiState.flushTested(test.completedIds)
-            test.results.forEach {
-                try {
-                    ProfileManager.updateProfile(it)
-                } catch (e: Exception) {
-                    Logs.w(e)
-                }
-            }
-            GroupManager.postReload(group.id)
-            DataStore.runningTest = false
-        }
+        finishConnectionTest(test, mainJob, group)
     }
     test.minimize = minimize@{
         if (!test.dialogStatus.compareAndSet(0, 1)) return@minimize
         test.notification = ConnectionTestNotification(
-            dialog.context,
-            "[${group.displayName()}] ${fragment.getString(R.string.connection_test)}"
+            SagerNet.application,
+            "[${group.displayName()}] ${SagerNet.application.getString(R.string.connection_test)}"
         )
-        dialog.hide()
+        test.hide()
     }
-    mainJob.invokeOnCompletion { cause ->
-        if (cause != null && test.dialogStatus.get() != 2) {
-            runOnMainDispatcher { test.cancel() }
-        }
+    test.observeViewLifecycle()
+    mainJob.invokeOnCompletion {
+        runOnMainDispatcher { test.cancel() }
     }
     mainJob.start()
 }

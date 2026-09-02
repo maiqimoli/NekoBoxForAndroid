@@ -155,7 +155,6 @@ class ConfigurationFragment @JvmOverloads constructor(
     val expandedChainIds = ConcurrentHashMap.newKeySet<Long>()
     val chainHopDetails = ConcurrentHashMap<Long, String>()
     val chainHopTesting = ConcurrentHashMap.newKeySet<Long>()
-    val testingProfileIds = ConcurrentHashMap.newKeySet<Long>()
 
     fun isBatchSelecting() = batchActions.isSelecting
 
@@ -169,8 +168,10 @@ class ConfigurationFragment @JvmOverloads constructor(
 
     internal fun isFilterGroupInitialized() = ::filterGroup.isInitialized
 
-    fun updateProfileTesting(profileId: Long, testing: Boolean) {
-        if (testing) testingProfileIds.add(profileId) else testingProfileIds.remove(profileId)
+    fun isProfileTesting(profileId: Long): Boolean =
+        ConnectionTestCoordinator.shared.isTesting(profileId)
+
+    fun notifyProfileTestingChanged(profileId: Long) {
         runOnMainDispatcher {
             val listAdapter = getCurrentProfileGroupFragment()?.adapter ?: return@runOnMainDispatcher
             val index = listAdapter.configurationIdList.indexOf(profileId)
@@ -460,16 +461,16 @@ class ConfigurationFragment @JvmOverloads constructor(
     @OptIn(DelicateCoroutinesApi::class)
     @Suppress("EXPERIMENTAL_API_USAGE")
     fun pingTest(icmpPing: Boolean) {
-        pingTestImpl(this, icmpPing)
+        if (!pingTestImpl(this, icmpPing)) {
+            snackbar(R.string.connection_test_already_running).show()
+        }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
     fun urlTest(profileIds: Set<Long>? = null) {
-        if (DataStore.runningTest) {
+        if (!urlTestImpl(this, profileIds)) {
             snackbar(R.string.connection_test_already_running).show()
-            return
         }
-        urlTestImpl(this, profileIds)
     }
 
     val exportConfig =

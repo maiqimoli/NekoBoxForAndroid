@@ -131,7 +131,7 @@ import moe.matsuri.nb4a.Protocols.getProtocolColor
 
             fun updateStatus(proxyEntity: ProxyEntity) {
                 val pf = gf.parentFragment as? ConfigurationFragment ?: return
-                if (proxyEntity.id in pf.testingProfileIds) {
+                if (pf.isProfileTesting(proxyEntity.id)) {
                     profileStatus.setText(R.string.connection_test_testing)
                     profileStatus.setTextColor(view.context.getColour(R.color.cyber_cyan_text))
                     profileStatus.background = DrawableCompat.wrap(

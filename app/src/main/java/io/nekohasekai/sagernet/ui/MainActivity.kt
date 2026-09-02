@@ -45,9 +45,11 @@ import io.nekohasekai.sagernet.ktx.onMainDispatcher
 import io.nekohasekai.sagernet.ktx.parseProxies
 import io.nekohasekai.sagernet.ktx.readableMessage
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
+import io.nekohasekai.sagernet.ktx.tryToShow
 import io.nekohasekai.sagernet.utils.PackageCache
 import moe.matsuri.nb4a.plugin.Plugins
 import moe.matsuri.nb4a.utils.Util
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -146,10 +148,12 @@ class MainActivity : ThemedActivity(),
         val uri = intent.data ?: return
 
         runOnDefaultDispatcher {
-            if (SubscriptionImportHelper.shouldImportSubscription(uri.scheme, uri.host)) {
-                importSubscription(uri)
-            } else {
-                importProfile(uri)
+            runImportSafely {
+                if (SubscriptionImportHelper.shouldImportSubscription(uri.scheme, uri.host)) {
+                    importSubscriptionInternal(uri)
+                } else {
+                    importProfileInternal(uri)
+                }
             }
         }
     }
@@ -161,7 +165,11 @@ class MainActivity : ThemedActivity(),
         return connection.service!!.urlTest()
     }
 
-    suspend fun importSubscription(uri: Uri) {
+    suspend fun importSubscription(uri: Uri) = runImportSafely {
+        importSubscriptionInternal(uri)
+    }
+
+    private suspend fun importSubscriptionInternal(uri: Uri) {
         val group = SubscriptionImportHelper.createDirectSubscriptionGroup(
             uri.scheme,
             uri.host,
@@ -170,18 +178,12 @@ class MainActivity : ThemedActivity(),
             uri.encodedFragment,
             uri::getQueryParameter,
         ) ?: run {
-            val data = uri.encodedQuery.takeIf { !it.isNullOrBlank() } ?: return
-            try {
-                KryoConverters.deserialize(
-                    ProxyGroup().apply { export = true }, Util.zlibDecompress(Util.b64Decode(data))
-                ).apply {
-                    export = false
-                }
-            } catch (e: Exception) {
-                onMainDispatcher {
-                    alert(e.readableMessage).show()
-                }
-                return
+            val data = uri.encodedQuery.takeIf { !it.isNullOrBlank() }
+                ?: error(getString(R.string.no_proxies_found_in_subscription))
+            KryoConverters.deserialize(
+                ProxyGroup().apply { export = true }, Util.zlibDecompress(Util.b64Decode(data))
+            ).apply {
+                export = false
             }
         }
 
@@ -210,15 +212,13 @@ class MainActivity : ThemedActivity(),
         GroupUpdater.startUpdate(subscription, true)
     }
 
-    suspend fun importProfile(uri: Uri) {
-        val profile = try {
+    suspend fun importProfile(uri: Uri) = runImportSafely {
+        importProfileInternal(uri)
+    }
+
+    private suspend fun importProfileInternal(uri: Uri) {
+        val profile =
             parseProxies(uri.toString()).getOrNull(0) ?: error(getString(R.string.no_proxies_found))
-        } catch (e: Exception) {
-            onMainDispatcher {
-                alert(e.readableMessage).show()
-            }
-            return
-        }
 
         onMainDispatcher {
             MaterialAlertDialogBuilder(this@MainActivity).setTitle(R.string.profile_import)
@@ -232,6 +232,18 @@ class MainActivity : ThemedActivity(),
                 .show()
         }
 
+    }
+
+    private suspend fun runImportSafely(importBlock: suspend () -> Unit) {
+        try {
+            importBlock()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            onMainDispatcher {
+                alert(error.readableMessage).tryToShow()
+            }
+        }
     }
 
     private suspend fun finishImportProfile(profile: AbstractBean) {

@@ -192,7 +192,9 @@ import androidx.core.view.size
             layoutManager = FixedLinearLayoutManager(configurationListView)
             layoutManager.initialPrefetchItemCount = 6
             configurationListView.layoutManager = layoutManager
-            adapter = ProfileConfigurationAdapter(this)
+            // Selection-only pages observe ordering but must not supersede the writer lease held
+            // by the editable configuration page for the same group.
+            adapter = ProfileConfigurationAdapter(this, canWriteOrder = !select)
             ProfileManager.addListener(adapter!!)
             GroupManager.addListener(adapter!!)
             configurationListView.adapter = adapter
@@ -254,6 +256,7 @@ import androidx.core.view.size
 
         override fun onDestroyView() {
             adapter?.let {
+                it.commitMove()
                 ProfileManager.removeListener(it)
                 GroupManager.removeListener(it)
             }

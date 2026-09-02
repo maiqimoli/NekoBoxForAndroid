@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import androidx.room.withTransaction
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.nekohasekai.sagernet.BuildConfig
@@ -27,11 +28,17 @@ import io.nekohasekai.sagernet.databinding.LayoutBackupBinding
 import io.nekohasekai.sagernet.databinding.LayoutImportBinding
 import io.nekohasekai.sagernet.databinding.LayoutProgressBinding
 import io.nekohasekai.sagernet.ktx.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import moe.matsuri.nb4a.utils.Util
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.text.SimpleDateFormat
@@ -51,46 +58,106 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
         private const val PBKDF2_ITERATIONS = 120_000
         private const val PBKDF2_SALT_BYTES = 16
         private const val GCM_TAG_BITS = 128
+        private const val STATE_PENDING_EXPORT = "backup.pendingExport"
+        private const val PENDING_EXPORT_PREFIX = ".nekobox-backup-export-"
+        private const val PENDING_EXPORT_SUFFIX = ".json"
         private val BACKUP_SECTIONS = listOf("profiles", "groups", "rules", "settings")
     }
 
     override fun name0() = app.getString(R.string.backup)
 
     var content = ""
+    private var passwordDialog: AlertDialog? = null
+    private var pendingExportFileName: String? = null
     private val exportSettings =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { data ->
-            if (data != null) {
-                runOnDefaultDispatcher {
-                    try {
-                        requireActivity().contentResolver.openOutputStream(
-                            data
-                        )!!.bufferedWriter().use {
-                            it.write(content)
+            val stagedExport = consumePendingExportFile()
+            if (data == null) {
+                stagedExport?.delete()
+                return@registerForActivityResult
+            }
+            runOnIoDispatcher {
+                try {
+                    val source = stagedExport?.takeIf { it.isFile }
+                        ?: throw IOException("Pending backup export is missing")
+                    source.inputStream().buffered().use { input ->
+                        app.contentResolver.openOutputStream(data, "w")?.buffered()?.use { output ->
+                            input.copyTo(output)
+                        } ?: throw IOException("Failed to open backup destination")
+                    }
+                    val destination = exportDestinationLabel(data)
+                    onMainDispatcher {
+                        if (!isAdded || this@BackupFragment.view == null) {
+                            return@onMainDispatcher
                         }
-                        val destination = exportDestinationLabel(data)
-                        onMainDispatcher {
-                            MaterialAlertDialogBuilder(requireContext())
-                                .setTitle(R.string.action_export_msg)
-                                .setMessage(
-                                    getString(R.string.action_export_msg_with_path, destination)
-                                )
-                                .setPositiveButton(android.R.string.ok, null)
-                                .show()
-                        }
-                    } catch (e: Exception) {
-                        Logs.w(e)
-                        onMainDispatcher {
+                        MaterialAlertDialogBuilder(requireContext())
+                            .setTitle(R.string.action_export_msg)
+                            .setMessage(
+                                getString(R.string.action_export_msg_with_path, destination)
+                            )
+                            .setPositiveButton(android.R.string.ok, null)
+                            .show()
+                    }
+                } catch (e: Exception) {
+                    Logs.w(e)
+                    onMainDispatcher {
+                        if (isAdded && this@BackupFragment.view != null) {
                             snackbar(e.readableMessage).show()
                         }
                     }
+                } finally {
+                    stagedExport?.delete()
                 }
             }
         }
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        pendingExportFileName = savedInstanceState
+            ?.getString(STATE_PENDING_EXPORT)
+            ?.takeIf(::isValidPendingExportName)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        pendingExportFileName?.let { outState.putString(STATE_PENDING_EXPORT, it) }
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun isValidPendingExportName(name: String): Boolean =
+        File(name).name == name &&
+                name.startsWith(PENDING_EXPORT_PREFIX) &&
+                name.endsWith(PENDING_EXPORT_SUFFIX)
+
+    private fun pendingExportFile(name: String?): File? = name
+        ?.takeIf(::isValidPendingExportName)
+        ?.let { File(app.cacheDir, it) }
+
+    private fun consumePendingExportFile(): File? {
+        val result = pendingExportFile(pendingExportFileName)
+        pendingExportFileName = null
+        return result
+    }
+
+    private fun stagePendingExport(backupContent: String): File {
+        app.cacheDir.mkdirs()
+        return File.createTempFile(
+            PENDING_EXPORT_PREFIX,
+            PENDING_EXPORT_SUFFIX,
+            app.cacheDir,
+        ).also { staged ->
+            try {
+                staged.writeText(backupContent)
+            } catch (e: Exception) {
+                staged.delete()
+                throw e
+            }
+        }
+    }
+
     private fun exportDestinationLabel(uri: Uri): String {
         val path = exportFilesystemPath(uri)
         val displayName = runCatching {
-            requireContext().contentResolver.query(uri, null, null, null, null)
+            app.contentResolver.query(uri, null, null, null, null)
                 ?.use { cursor ->
                     cursor.moveToFirst()
                     cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)
@@ -105,7 +172,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
 
     private fun exportFilesystemPath(uri: Uri): String? {
         if (uri.scheme == "file") return uri.path
-        if (!DocumentsContract.isDocumentUri(requireContext(), uri)) return null
+        if (!DocumentsContract.isDocumentUri(app, uri)) return null
 
         val documentId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
             ?: return null
@@ -144,30 +211,71 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
 
         binding.actionExport.setOnClickListener {
             prepareBackup(binding) {
-                startFilesForResult(
-                    exportSettings, "nekobox_backup_${backupTimestamp()}.json"
-                )
+                val backupContent = content
+                viewLifecycleOwner.lifecycleScope.launch {
+                    var stagedExport: File? = null
+                    try {
+                        val staged = withContext(NonCancellable + Dispatchers.IO) {
+                            stagePendingExport(backupContent).also { stagedExport = it }
+                        }
+                        consumePendingExportFile()?.delete()
+                        pendingExportFileName = staged.name
+                        startFilesForResult(
+                            exportSettings, "nekobox_backup_${backupTimestamp()}.json"
+                        )
+                        stagedExport = null
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logs.w(e)
+                        if (isAdded && this@BackupFragment.view != null) {
+                            snackbar(e.readableMessage).show()
+                        }
+                    } finally {
+                        stagedExport?.let { abandoned ->
+                            if (pendingExportFileName == abandoned.name) {
+                                pendingExportFileName = null
+                            }
+                            withContext(NonCancellable + Dispatchers.IO) {
+                                abandoned.delete()
+                            }
+                        }
+                    }
+                }
             }
         }
 
         binding.actionShare.setOnClickListener {
             prepareBackup(binding) {
-                app.cacheDir.mkdirs()
-                val cacheFile = File(
-                    app.cacheDir, "nekobox_backup_${backupTimestamp()}.json"
-                )
-                cacheFile.writeText(content)
-                startActivity(
-                    Intent.createChooser(
-                        Intent(Intent.ACTION_SEND).setType("application/json")
-                            .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            .putExtra(
-                                Intent.EXTRA_STREAM, FileProvider.getUriForFile(
-                                    app, BuildConfig.APPLICATION_ID + ".cache", cacheFile
-                                )
-                            ), app.getString(R.string.abc_shareactionprovider_share_with)
-                )
-                )
+                if (!isAdded || this@BackupFragment.view == null) return@prepareBackup
+                val backupContent = content
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        val uri = withContext(Dispatchers.IO) {
+                            app.cacheDir.mkdirs()
+                            val cacheFile = File(
+                                app.cacheDir, "nekobox_backup_${backupTimestamp()}.json"
+                            )
+                            cacheFile.writeText(backupContent)
+                            FileProvider.getUriForFile(
+                                app, BuildConfig.APPLICATION_ID + ".cache", cacheFile
+                            )
+                        }
+                        startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).setType("application/json")
+                                    .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    .putExtra(Intent.EXTRA_STREAM, uri),
+                                app.getString(R.string.abc_shareactionprovider_share_with)
+                            )
+                        )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logs.w(e)
+                        snackbar(e.readableMessage).show()
+                    }
+                }
             }
         }
 
@@ -264,6 +372,12 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
         }
     }
 
+    override fun onDestroyView() {
+        passwordDialog?.dismiss()
+        passwordDialog = null
+        super.onDestroyView()
+    }
+
     private fun encryptBackup(payload: String, password: CharArray): String {
         val salt = ByteArray(PBKDF2_SALT_BYTES)
         SecureRandom().nextBytes(salt)
@@ -321,22 +435,23 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
     }
 
     val importFile = registerForActivityResult(ActivityResultContracts.GetContent()) { file ->
-        if (file != null) {
-            runOnDefaultDispatcher {
+        if (file != null && isAdded && view != null) {
+            viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Default) {
                 startImport(file)
             }
         }
     }
 
     suspend fun startImport(file: Uri) {
-        val fileName = requireContext().contentResolver.query(file, null, null, null, null)
+        val fileName = app.contentResolver.query(file, null, null, null, null)
             ?.use { cursor ->
                 cursor.moveToFirst()
                 cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME).let(cursor::getString)
             }
-            ?.takeIf { it.isNotBlank() } ?: file.pathSegments.last()
-            .substringAfterLast('/')
-            .substringAfter(':')
+            ?.takeIf { it.isNotBlank() } ?: file.pathSegments.lastOrNull()
+            ?.substringAfterLast('/')
+            ?.substringAfter(':')
+            .orEmpty()
 
         if (!fileName.endsWith(".json")) {
             onMainDispatcher {
@@ -350,7 +465,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
         }
 
         var content = try {
-            JSONObject((requireContext().contentResolver.openInputStream(file) ?: return).use {
+            JSONObject((app.contentResolver.openInputStream(file) ?: return).use {
                 it.readTextLimited(MAX_IMPORTED_CONFIG_BYTES)
             })
         } catch (e: Exception) {
@@ -398,7 +513,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
             MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.backup_import)
                 .setView(import.root)
                 .setPositiveButton(R.string.backup_import) { _, _ ->
-                    val context = requireContext()
+                    val context = app
                     val service = (requireActivity() as? MainActivity)?.connection?.service
 
                     val binding = LayoutProgressBinding.inflate(layoutInflater)
@@ -410,7 +525,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
                     runOnDefaultDispatcher {
                         runCatching {
                             check(requestServiceStopAndWait(context, service)) {
-                                getString(R.string.action_import_err)
+                                app.getString(R.string.action_import_err)
                             }
                             finishImport(
                                 content,
@@ -426,12 +541,14 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
                         }.onFailure {
                             Logs.w(it)
                             onMainDispatcher {
-                                alert(it.readableMessage).tryToShow()
+                                if (isAdded && this@BackupFragment.view != null) {
+                                    alert(it.readableMessage).tryToShow()
+                                }
                             }
                         }
 
                         onMainDispatcher {
-                            dialog.dismiss()
+                            runCatching { dialog.dismiss() }
                         }
                     }
                 }
@@ -483,14 +600,24 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
         val setting = binding.backupSettings.isChecked
 
         fun generate(password: CharArray?) {
-            runOnDefaultDispatcher {
+            if (!isAdded || view == null) {
+                password?.fill('\u0000')
+                return
+            }
+            viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Default) {
                 try {
                     content = doBackup(profile, rule, setting, password)
-                    onMainDispatcher { onReady() }
+                    withContext(Dispatchers.Main.immediate) {
+                        if (isAdded && this@BackupFragment.view != null) onReady()
+                    }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Logs.w(e)
-                    onMainDispatcher {
-                        snackbar(e.readableMessage).show()
+                    withContext(Dispatchers.Main.immediate) {
+                        if (isAdded && this@BackupFragment.view != null) {
+                            snackbar(e.readableMessage).show()
+                        }
                     }
                 } finally {
                     password?.fill('\u0000')
@@ -511,7 +638,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
             hint = getString(R.string.backup_password)
             setPadding(48, 0, 48, 0)
         }
-        MaterialAlertDialogBuilder(requireContext())
+        val dialog = MaterialAlertDialogBuilder(requireContext())
             .setTitle(title)
             .setView(input)
             .setNegativeButton(android.R.string.cancel, null)
@@ -523,12 +650,22 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
                     onPassword(password)
                 }
             }
-            .show()
+            .create()
+        passwordDialog?.dismiss()
+        passwordDialog = dialog
+        dialog.setOnDismissListener {
+            if (passwordDialog === dialog) passwordDialog = null
+        }
+        dialog.show()
     }
 
     private suspend fun requestImportPassword(): CharArray? =
-        suspendCancellableCoroutine { continuation ->
-            runOnMainDispatcher {
+        withContext(Dispatchers.Main.immediate) {
+            suspendCancellableCoroutine { continuation ->
+                if (!isAdded || view == null) {
+                    continuation.resume(null)
+                    return@suspendCancellableCoroutine
+                }
                 val input = EditText(requireContext()).apply {
                     inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
                     hint = getString(R.string.backup_password)
@@ -537,9 +674,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
                 val dialog = MaterialAlertDialogBuilder(requireContext())
                     .setTitle(R.string.backup_password)
                     .setView(input)
-                    .setNegativeButton(android.R.string.cancel) { _, _ ->
-                        if (continuation.isActive) continuation.resume(null)
-                    }
+                    .setNegativeButton(android.R.string.cancel, null)
                     .setPositiveButton(android.R.string.ok) { _, _ ->
                         val password = input.text?.toString()?.toCharArray() ?: charArrayOf()
                         if (password.isEmpty()) {
@@ -550,9 +685,17 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
                         }
                     }
                     .create()
-                dialog.setOnCancelListener {
+                dialog.setOnDismissListener {
+                    if (passwordDialog === dialog) passwordDialog = null
                     if (continuation.isActive) continuation.resume(null)
                 }
+                continuation.invokeOnCancellation {
+                    runOnMainDispatcher {
+                        dialog.dismiss()
+                    }
+                }
+                passwordDialog?.dismiss()
+                passwordDialog = dialog
                 dialog.show()
             }
         }

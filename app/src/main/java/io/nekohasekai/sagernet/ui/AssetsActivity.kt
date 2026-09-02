@@ -2,6 +2,7 @@ package io.nekohasekai.sagernet.ui
 
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.system.Os
 import android.text.format.DateFormat
 import android.view.Menu
 import android.view.MenuItem
@@ -21,7 +22,10 @@ import libcore.Libcore
 import moe.matsuri.nb4a.utils.Util
 import org.json.JSONObject
 import java.io.File
-import java.io.FileWriter
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.RandomAccessFile
+import java.nio.charset.StandardCharsets
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -97,39 +101,100 @@ class AssetsActivity : ThemedActivity() {
 
     val importFile = registerForActivityResult(ActivityResultContracts.GetContent()) { file ->
         if (file != null) {
-            val fileName = contentResolver.query(file, null, null, null, null)?.use { cursor ->
-                cursor.moveToFirst()
-                cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME).let(cursor::getString)
-            }?.takeIf { it.isNotBlank() } ?: file.pathSegments.last()
-                .substringAfterLast('/')
-                .substringAfter(':')
-
-            if (!fileName.endsWith(".db")) {
-                alert(getString(R.string.route_not_asset, fileName)).show()
+            val reportedName = queryDisplayName(file)
+                ?: file.pathSegments.lastOrNull()
+                    ?.substringAfterLast('/')
+                    ?.substringAfterLast('\\')
+                    ?.substringAfterLast(':')
+                ?: ""
+            val fileName = runCatching {
+                AssetImportPolicy.requireSafeFileName(reportedName)
+            }.getOrElse {
+                alert(getString(R.string.route_not_asset, reportedName)).tryToShow()
                 return@registerForActivityResult
             }
-            val filesDir = getExternalFilesDir(null) ?: filesDir
+            val assetDirectory = getExternalFilesDir(null) ?: filesDir
 
-            runOnDefaultDispatcher {
-                val outFile = File(filesDir, fileName).apply {
-                    parentFile?.mkdirs()
+            runOnIoDispatcher {
+                runCatching {
+                    importAsset(file, assetDirectory, fileName)
+                }.onSuccess {
+                    onMainDispatcher {
+                        adapter.reloadAssets()
+                    }
+                }.onFailure { error ->
+                    onMainDispatcher {
+                        alert(error.readableMessage).tryToShow()
+                    }
                 }
-
-                contentResolver.openInputStream(file)?.use(outFile.outputStream())
-
-                File(outFile.parentFile, outFile.nameWithoutExtension + ".version.txt").apply {
-                    if (isFile) delete()
-                    createNewFile()
-                    val fw = FileWriter(this)
-                    fw.write("Custom")
-                    fw.close()
-                }
-
-                adapter.reloadAssets()
             }
-
         }
     }
+
+    private fun queryDisplayName(uri: android.net.Uri): String? = runCatching {
+        contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (column >= 0 && cursor.moveToFirst()) cursor.getString(column) else null
+        }
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    @Throws(IOException::class)
+    private fun importAsset(uri: android.net.Uri, directory: File, fileName: String) {
+        val destination = AssetImportPolicy.resolveContainedFile(directory, fileName)
+        val versionDestination = AssetImportPolicy.resolveVersionFile(directory, fileName)
+        val stagingFile = File.createTempFile(".asset-", ".tmp", directory)
+        val stagingVersion = File.createTempFile(".asset-version-", ".tmp", directory)
+        var handedToTransaction = false
+
+        try {
+            val input = contentResolver.openInputStream(uri)
+                ?: throw IOException("Failed to open selected asset")
+            input.use {
+                FileOutputStream(stagingFile).use { output ->
+                    AssetImportPolicy.copyLimited(it, output)
+                    output.fd.sync()
+                }
+            }
+
+            if (!isRecognizedAsset(stagingFile, fileName)) {
+                throw IOException(getString(R.string.route_not_asset, fileName))
+            }
+
+            FileOutputStream(stagingVersion).use { output ->
+                output.write("Custom".toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+
+            AssetImportPolicy.replaceAssetAndVersion(
+                stagingFile,
+                stagingVersion,
+                destination,
+                versionDestination,
+                onTransactionPrepared = { handedToTransaction = true },
+                move = { source, target ->
+                    // Every transaction file shares one directory, making each replacement atomic.
+                    Os.rename(source.absolutePath, target.absolutePath)
+                },
+            )
+        } finally {
+            if (!handedToTransaction) {
+                stagingFile.delete()
+                stagingVersion.delete()
+            }
+        }
+    }
+
+    private fun isRecognizedAsset(file: File, destinationName: String): Boolean =
+        AssetImportPolicy.isRecognizedAsset(file, destinationName) { candidate ->
+            Libcore.validateGeoIP(candidate.absolutePath)
+            true
+        }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
@@ -191,7 +256,23 @@ class AssetsActivity : ThemedActivity() {
         override fun commit(actions: List<Pair<Int, File>>) {
             val groups = actions.map { it.second }.toTypedArray()
             runOnDefaultDispatcher {
-                groups.forEach { it.deleteRecursively() }
+                var firstFailure: Throwable? = null
+                groups.forEach { asset ->
+                    runCatching {
+                        val directory = asset.parentFile
+                            ?: throw IOException("Asset deletion target has no parent directory")
+                        AssetImportPolicy.deleteAssetAndVersion(directory, asset.name) {
+                                source, target ->
+                            Os.rename(source.absolutePath, target.absolutePath)
+                        }
+                    }.onFailure { failure ->
+                        if (firstFailure == null) firstFailure = failure
+                    }
+                }
+                onMainDispatcher {
+                    adapter.reloadAssets()
+                    firstFailure?.let { alert(it.readableMessage).tryToShow() }
+                }
             }
         }
 
@@ -273,7 +354,7 @@ class AssetsActivity : ThemedActivity() {
     )
 
     suspend fun updateAsset(file: File, versionFile: File, localVersion: String) {
-        var fileName = file.name
+        val fileName = AssetImportPolicy.requireSafeFileName(file.name)
 
         val ruleProvider = rulesProviders[DataStore.rulesProvider]
         val repo = ruleProvider.repoByFileName[fileName]
@@ -290,7 +371,12 @@ class AssetsActivity : ThemedActivity() {
             }.execute()
 
             val release = JSONObject(Util.getStringBox(response.contentString))
-            val tagName = release.optString("tag_name")
+            val tagName = release.optString("tag_name").trim()
+            require(tagName.isNotEmpty() &&
+                    tagName.toByteArray(StandardCharsets.UTF_8).size <= 4096 &&
+                    tagName.none { it.isISOControl() }) {
+                "Release contains an invalid asset version"
+            }
 
             if (tagName == localVersion) {
                 onMainDispatcher {
@@ -306,32 +392,52 @@ class AssetsActivity : ThemedActivity() {
 
             response = client.newRequest().apply {
                 setURL(browserDownloadUrl)
-                allowLargeResponse()
             }.execute()
 
-            val cacheFile = File(file.parentFile, file.name + ".tmp")
-            cacheFile.parentFile?.mkdirs()
+            val directory = file.parentFile?.canonicalFile
+                ?: throw IOException("Asset destination has no parent directory")
+            val destination = AssetImportPolicy.resolveContainedFile(directory, fileName)
+            val versionDestination = AssetImportPolicy.resolveVersionFile(directory, fileName)
+            require(versionDestination.canonicalFile == versionFile.canonicalFile) {
+                "Asset version destination changed"
+            }
+            val stagingFile = File.createTempFile(".asset-", ".tmp", directory)
+            val stagingVersion = File.createTempFile(".asset-version-", ".tmp", directory)
+            var handedToTransaction = false
 
             try {
-                response.writeTo(cacheFile.canonicalPath)
-
-                if (fileName.endsWith(".xz")) {
-                    Libcore.unxz(cacheFile.absolutePath, file.absolutePath)
-                } else {
-                    check(cacheFile.renameTo(file)) {
-                        "Failed to publish downloaded asset ${file.name}"
-                    }
+                response.writeTo(stagingFile.canonicalPath)
+                RandomAccessFile(stagingFile, "rw").use { it.fd.sync() }
+                if (!isRecognizedAsset(stagingFile, fileName)) {
+                    throw IOException(getString(R.string.route_not_asset, fileName))
                 }
 
-                // Only advance the marker after the new asset is fully published.
-                versionFile.writeText(tagName)
+                FileOutputStream(stagingVersion).use { output ->
+                    output.write(tagName.toByteArray(StandardCharsets.UTF_8))
+                    output.fd.sync()
+                }
+
+                AssetImportPolicy.replaceAssetAndVersion(
+                    stagingFile,
+                    stagingVersion,
+                    destination,
+                    versionDestination,
+                    onTransactionPrepared = { handedToTransaction = true },
+                    move = { source, target ->
+                        Os.rename(source.absolutePath, target.absolutePath)
+                    },
+                )
             } finally {
-                cacheFile.delete()
+                // Once publication starts, the transaction policy owns both staging paths so a
+                // failed recovery can retain every file referenced by its durable manifest.
+                if (!handedToTransaction) {
+                    stagingFile.delete()
+                    stagingVersion.delete()
+                }
             }
 
-            adapter.reloadAssets()
-
             onMainDispatcher {
+                adapter.reloadAssets()
                 snackbar(R.string.route_asset_updated).show()
             }
         } finally {

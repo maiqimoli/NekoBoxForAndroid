@@ -17,6 +17,48 @@ type geoip struct {
 	geoipReader *maxminddb.Reader
 }
 
+// ValidateGeoIP verifies that path contains a readable sing-box GeoIP database.
+// It is exported for gomobile callers that need to validate a downloaded database
+// before replacing the active one.
+func ValidateGeoIP(path string) (resultErr error) {
+	reader, err := maxminddb.Open(path)
+	if err != nil {
+		return fmt.Errorf("open GeoIP database: %w", err)
+	}
+	defer func() {
+		if err := reader.Close(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close GeoIP database: %w", err))
+		}
+	}()
+
+	if reader.Metadata.DatabaseType != "sing-geoip" {
+		return fmt.Errorf(
+			"incorrect GeoIP database type: expected sing-geoip, got %q",
+			reader.Metadata.DatabaseType,
+		)
+	}
+
+	networks := reader.Networks(maxminddb.SkipAliasedNetworks)
+	hasRecord := false
+	for networks.Next() {
+		var countryCode string
+		if _, err := networks.Network(&countryCode); err != nil {
+			return fmt.Errorf("read GeoIP record: %w", err)
+		}
+		if strings.TrimSpace(countryCode) != "" {
+			hasRecord = true
+		}
+	}
+	if err := networks.Err(); err != nil {
+		return fmt.Errorf("iterate GeoIP records: %w", err)
+	}
+	if !hasRecord {
+		return errors.New("GeoIP database contains no non-empty records")
+	}
+
+	return nil
+}
+
 func (g *geoip) Open(path string) error {
 	geoipReader, err := maxminddb.Open(path)
 	g.geoipReader = geoipReader

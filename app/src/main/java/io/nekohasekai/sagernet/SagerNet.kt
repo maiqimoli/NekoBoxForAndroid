@@ -13,6 +13,8 @@ import android.os.Build
 import android.os.PowerManager
 import android.os.StrictMode
 import android.os.UserManager
+import android.system.Os
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
@@ -24,6 +26,7 @@ import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.isOss
 import io.nekohasekai.sagernet.ktx.isPreview
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
+import io.nekohasekai.sagernet.ui.AssetImportPolicy
 import io.nekohasekai.sagernet.ui.MainActivity
 import io.nekohasekai.sagernet.utils.*
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
@@ -71,6 +74,21 @@ class SagerNet : Application(),
 
         if (isMainProcess || isBgProcess) {
             externalAssets.mkdirs()
+            // Both processes may publish rule databases. Repair an interrupted pair before the
+            // Go core starts reading it or the background process considers bundled upgrades.
+            AssetImportPolicy.recoverPendingTransaction(
+                directory = externalAssets,
+                onCorruptManifest = { evidence, failure ->
+                    Log.w(
+                        "SagerNet",
+                        "Quarantined corrupt asset transaction marker as ${evidence.name}",
+                        failure,
+                    )
+                },
+                move = { source, target ->
+                    Os.rename(source.absolutePath, target.absolutePath)
+                },
+            )
             Seq.setContext(this)
             Libcore.initCore(
                 process,

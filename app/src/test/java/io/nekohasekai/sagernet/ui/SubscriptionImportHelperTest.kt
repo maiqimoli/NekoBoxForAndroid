@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -77,6 +78,19 @@ class SubscriptionImportHelperTest {
     }
 
     @Test
+    fun createDirectSubscriptionGroupRejectsMalformedEncodedPath() {
+        assertThrows(MalformedSubscriptionLinkException::class.java) {
+            SubscriptionImportHelper.createDirectSubscriptionGroup(
+                "clash",
+                "install-config",
+                "/https%3A%2F%",
+                null,
+                null,
+            ) { null }
+        }
+    }
+
+    @Test
     fun createDirectSubscriptionGroupSupportsRawEncodedQueryUrl() {
         val group = SubscriptionImportHelper.createDirectSubscriptionGroup(
             "sn",
@@ -103,6 +117,34 @@ class SubscriptionImportHelperTest {
         assertNotNull(group)
         assertEquals("FragmentFeed", group?.name)
         assertEquals("https://example.com/sub", group?.subscription?.link)
+    }
+
+    @Test
+    fun createDirectSubscriptionGroupRejectsMalformedLooseParameters() {
+        assertThrows(MalformedSubscriptionLinkException::class.java) {
+            SubscriptionImportHelper.createDirectSubscriptionGroup(
+                "sn",
+                "subscription",
+                null,
+                "url=https%3A%2F%2Fexample.com&broken=%ZZ",
+                null,
+            ) { null }
+        }
+    }
+
+    @Test
+    fun createDirectSubscriptionGroupNormalizesQueryParserFailures() {
+        assertThrows(MalformedSubscriptionLinkException::class.java) {
+            SubscriptionImportHelper.createDirectSubscriptionGroup(
+                "sn",
+                "subscription",
+                null,
+                null,
+                null,
+            ) {
+                throw IllegalArgumentException("bad escape")
+            }
+        }
     }
 
     @Test

@@ -8,7 +8,8 @@ import io.nekohasekai.sagernet.database.*
 import io.nekohasekai.sagernet.fmt.AbstractBean
 import io.nekohasekai.sagernet.fmt.http.HttpBean
 import io.nekohasekai.sagernet.fmt.hysteria.HysteriaBean
-import io.nekohasekai.sagernet.fmt.hysteria.parseHysteria1Json
+import io.nekohasekai.sagernet.fmt.hysteria.parseHysteriaConfig
+import io.nekohasekai.sagernet.fmt.hysteria.parseHysteriaJson
 import io.nekohasekai.sagernet.fmt.shadowsocks.ShadowsocksBean
 import io.nekohasekai.sagernet.fmt.shadowsocks.parseShadowsocks
 import io.nekohasekai.sagernet.fmt.socks.SOCKSBean
@@ -31,12 +32,69 @@ import org.ini4j.Ini
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
+import org.yaml.snakeyaml.LoaderOptions
 import org.yaml.snakeyaml.TypeDescription
 import org.yaml.snakeyaml.Yaml
 import java.io.StringReader
 
 @Suppress("EXPERIMENTAL_API_USAGE")
 object RawUpdater : GroupUpdater() {
+
+    private val HYSTERIA_SERVER_LINE = Regex("""(?m)^\s*server\s*:""")
+
+    private fun subscriptionYaml(): Yaml {
+        val options = LoaderOptions().apply {
+            codePointLimit = MAX_SUBSCRIPTION_DECODED_BYTES
+            maxAliasesForCollections = 50
+            nestingDepthLimit = MAX_SUBSCRIPTION_NESTING_DEPTH
+        }
+        return Yaml(options).apply {
+            addTypeDescription(TypeDescription(String::class.java, "str"))
+        }
+    }
+
+    internal fun loadSubscriptionYamlMap(
+        text: String,
+        eventBudget: SubscriptionParseBudget = SubscriptionParseBudget(),
+        decodedBudget: SubscriptionParseBudget = SubscriptionParseBudget(),
+    ): Map<*, *> {
+        val yaml = subscriptionYaml()
+        eventBudget.validateYamlEvents(yaml.parse(StringReader(text)))
+        val decoded = yaml.loadAs(text, Map::class.java) ?: error("Empty YAML subscription")
+        decodedBudget.validateDecodedTree(decoded)
+        return decoded
+    }
+
+    private class BudgetedJsonTokener(
+        text: String,
+        private val budget: SubscriptionParseBudget,
+    ) : JSONTokener(text) {
+
+        override fun nextValue(): Any {
+            budget.recordNode()
+            return super.nextValue()
+        }
+    }
+
+    internal fun parseJsonValueWithBudget(
+        text: String,
+        budget: SubscriptionParseBudget = SubscriptionParseBudget(),
+    ): Any = BudgetedJsonTokener(text, budget).nextValue()
+
+    private fun Throwable.isSubscriptionYamlLimit(): Boolean {
+        var error: Throwable? = this
+        while (error != null) {
+            val message = error.message.orEmpty().lowercase()
+            if ("exceeds the limit" in message ||
+                "exceeded max" in message ||
+                "aliases for non-scalar nodes" in message
+            ) {
+                return true
+            }
+            error = error.cause
+        }
+        return false
+    }
 
     @SuppressLint("Recycle")
     override suspend fun doUpdate(
@@ -244,6 +302,8 @@ object RawUpdater : GroupUpdater() {
     @Suppress("UNCHECKED_CAST")
     suspend fun parseRaw(text: String, fileName: String = ""): List<AbstractBean>? {
 
+        text.requireUtf8SizeAtMost(MAX_IMPORTED_CONFIG_BYTES)
+
         val proxies = mutableListOf<AbstractBean>()
 
         if (text.contains("proxies:")) {
@@ -252,15 +312,17 @@ object RawUpdater : GroupUpdater() {
 
             try {
 
-                val yaml = Yaml().apply {
-                    addTypeDescription(TypeDescription(String::class.java, "str"))
-                }.loadAs(text, Map::class.java)
+                val budget = SubscriptionParseBudget()
+                val yaml = loadSubscriptionYamlMap(text)
 
                 val globalClientFingerprint = yaml["global-client-fingerprint"]?.toString() ?: ""
 
-                for (proxy in (yaml["proxies"] as? (List<Map<String, Any?>>) ?: error(
+                val profileConfigs = yaml["proxies"] as? List<Map<String, Any?>> ?: error(
                     app.getString(R.string.no_proxies_found_in_file)
-                ))) {
+                )
+                budget.requireProfileCount(profileConfigs.size)
+
+                for (proxy in profileConfigs) {
                     // Note: YAML numbers parsed as "Long"
 
                     when (proxy["type"] as String) {
@@ -690,13 +752,47 @@ object RawUpdater : GroupUpdater() {
                         }
                     }
                 }
+                budget.requireProfileCount(proxies.size)
                 return proxies
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: SubscriptionParseLimitException) {
+                throw e
             } catch (e: Exception) {
+                if (e.isSubscriptionYamlLimit()) {
+                    throw SubscriptionParseLimitException(
+                        "Subscription YAML exceeds parser limits",
+                        e,
+                    )
+                }
                 Logs.w(e)
             }
-        } else if (text.contains("[Interface]")) {
+        }
+
+        if (HYSTERIA_SERVER_LINE.containsMatchIn(text)) {
+            try {
+                val budget = SubscriptionParseBudget()
+                val config = loadSubscriptionYamlMap(text)
+                config.parseHysteriaConfig()?.let { bean ->
+                    budget.requireProfileCount(1)
+                    return listOf(bean)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: SubscriptionParseLimitException) {
+                throw e
+            } catch (e: Exception) {
+                if (e.isSubscriptionYamlLimit()) {
+                    throw SubscriptionParseLimitException(
+                        "Subscription YAML exceeds parser limits",
+                        e,
+                    )
+                }
+                Logs.w(e)
+            }
+        }
+
+        if (text.contains("[Interface]")) {
             // wireguard
             try {
                 proxies.addAll(parseWireGuard(text).map {
@@ -704,28 +800,48 @@ object RawUpdater : GroupUpdater() {
                     it
                 })
                 return proxies
+            } catch (e: SubscriptionParseLimitException) {
+                throw e
             } catch (e: Exception) {
                 Logs.w(e)
             }
         }
 
         try {
-            val json = JSONTokener(text).nextValue()
-            return parseJSON(json)
+            SubscriptionParseBudget().validateJsonNesting(text)
+            val json = parseJsonValueWithBudget(text)
+            SubscriptionParseBudget().validateDecodedTree(json)
+            val result = parseJSON(json)
+            SubscriptionParseBudget().requireProfileCount(result.size)
+            return result
+        } catch (e: SubscriptionParseLimitException) {
+            throw e
         } catch (e: Exception) {
             Logs.w(e)
         }
 
         try {
-            return parseProxies(text.decodeBase64UrlSafe()).takeIf { it.isNotEmpty() }
-                ?: error("Not found")
+            val decoded = text.decodeBase64UrlSafe()
+            val budget = SubscriptionParseBudget()
+            budget.validateLinkText(decoded)
+            val result = parseProxies(decoded).takeIf { it.isNotEmpty() } ?: error("Not found")
+            budget.requireProfileCount(result.size)
+            return result
+        } catch (e: SubscriptionParseLimitException) {
+            throw e
         } catch (e: Exception) {
             Logs.w(e)
         }
 
         try {
-            return parseProxies(text).takeIf { it.isNotEmpty() } ?: error("Not found")
+            val budget = SubscriptionParseBudget()
+            budget.validateLinkText(text)
+            val result = parseProxies(text).takeIf { it.isNotEmpty() } ?: error("Not found")
+            budget.requireProfileCount(result.size)
+            return result
         } catch (e: SubscriptionFoundException) {
+            throw e
+        } catch (e: SubscriptionParseLimitException) {
             throw e
         } catch (e: Exception) {
             Logs.w(e)
@@ -742,16 +858,28 @@ object RawUpdater : GroupUpdater() {
     }
 
     fun parseWireGuard(conf: String): List<WireGuardBean> {
-        val ini = Ini(StringReader(conf))
+        SubscriptionParseBudget().validateIniText(conf)
+        val ini = Ini().apply {
+            config.setMultiOption(true)
+            config.setMultiSection(true)
+            config.setEscapeNewline(true)
+            load(StringReader(conf))
+        }
         val iface = ini["Interface"] ?: error("Missing 'Interface' selection")
+        val peers = ini.getAll("Peer")
+        if (peers.isNullOrEmpty()) error("Missing 'Peer' selections")
+        val budget = SubscriptionParseBudget()
+        budget.requireProfileCount(peers.size)
+        budget.validateDecodedTree(iface)
+        budget.validateDecodedTree(peers)
+
         val bean = WireGuardBean().applyDefaultValues()
         val localAddresses = iface.getAll("Address")
         if (localAddresses.isNullOrEmpty()) error("Empty address in 'Interface' selection")
         bean.localAddress = localAddresses.flatMap { it.split(",") }.joinToString("\n")
+        budget.recordField(bean.localAddress, includeInDecodedBytes = false)
         bean.privateKey = iface["PrivateKey"]
-        bean.mtu = iface["MTU"]?.toIntOrNull()
-        val peers = ini.getAll("Peer")
-        if (peers.isNullOrEmpty()) error("Missing 'Peer' selections")
+        iface["MTU"]?.toIntOrNull()?.let { bean.mtu = it }
         val beans = mutableListOf<WireGuardBean>()
         for (peer in peers) {
             val endpoint = peer["Endpoint"]
@@ -770,57 +898,80 @@ object RawUpdater : GroupUpdater() {
         return beans
     }
 
-    fun parseJSON(json: Any): List<AbstractBean> {
+    fun parseJSON(json: Any): List<AbstractBean> = parseJSON(json, SubscriptionParseBudget())
+
+    internal fun parseJSON(
+        json: Any,
+        budget: SubscriptionParseBudget,
+    ): List<AbstractBean> = parseJSON(json, 1, budget)
+
+    private fun parseJSON(
+        json: Any,
+        nestingDepth: Int,
+        budget: SubscriptionParseBudget,
+    ): List<AbstractBean> {
+        if (nestingDepth > MAX_SUBSCRIPTION_NESTING_DEPTH) {
+            throw SubscriptionParseLimitException(
+                "Subscription JSON exceeds nesting depth $MAX_SUBSCRIPTION_NESTING_DEPTH",
+            )
+        }
         val proxies = ArrayList<AbstractBean>()
 
         if (json is JSONObject) {
             when {
-                json.has("server") && (json.has("up") || json.has("up_mbps")) -> {
-                    return listOf(json.parseHysteria1Json())
-                }
-
                 json.has("method") -> {
+                    budget.recordProfile()
                     return listOf(json.parseShadowsocks())
                 }
 
                 json.has("remote_addr") -> {
+                    budget.recordProfile()
                     return listOf(json.parseTrojanGo())
                 }
 
                 json.has("outbounds") -> {
-                    return json.getJSONArray("outbounds")
-                        .filterIsInstance<JSONObject>()
-                        .mapNotNull {
-                            val ty = it.getStr("type")
-                            if (ty == null || ty == "" ||
-                                ty == "dns" || ty == "block" || ty == "direct" || ty == "selector" || ty == "urltest"
-                            ) {
-                                null
-                            } else {
-                                it
-                            }
-                        }.map {
-                            ConfigBean().apply {
-                                applyDefaultValues()
-                                type = 1
-                                config = it.toStringPretty()
-                                name = it.getStr("tag")
-                            }
+                    val outbounds = json.getJSONArray("outbounds")
+                    for (index in 0 until outbounds.length()) {
+                        val outbound = outbounds.opt(index) as? JSONObject ?: continue
+                        val type = outbound.getStr("type")
+                        if (type.isNullOrEmpty() ||
+                            type == "dns" || type == "block" || type == "direct" ||
+                            type == "selector" || type == "urltest"
+                        ) {
+                            continue
                         }
+                        budget.recordProfile()
+                        proxies.add(ConfigBean().apply {
+                            applyDefaultValues()
+                            this.type = 1
+                            config = outbound.toStringPretty()
+                            name = outbound.getStr("tag")
+                        })
+                    }
+                    return proxies
                 }
 
-                json.has("server") && json.has("server_port") -> {
-                    return listOf(ConfigBean().applyDefaultValues().apply {
-                        type = 1
-                        config = json.toStringPretty()
-                    })
-                }
+            }
+
+            json.parseHysteriaJson()?.let {
+                // Hysteria's parser decides the version from several schema variants. Record the
+                // result before retaining it so an over-budget bean never enters the result list.
+                budget.recordProfile()
+                return listOf(it)
+            }
+
+            if (json.has("server") && json.has("server_port")) {
+                budget.recordProfile()
+                return listOf(ConfigBean().applyDefaultValues().apply {
+                    type = 1
+                    config = json.toStringPretty()
+                })
             }
         } else {
             json as JSONArray
             json.forEach { _, it ->
                 if (isJsonObjectValid(it)) {
-                    proxies.addAll(parseJSON(it))
+                    proxies.addAll(parseJSON(it, nestingDepth + 1, budget))
                 }
             }
         }

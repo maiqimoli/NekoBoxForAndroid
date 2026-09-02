@@ -19,6 +19,8 @@ type selectorCallbackRecorder struct {
 
 func (*selectorCallbackRecorder) UseOfficialAssets() bool { return false }
 
+func (*selectorCallbackRecorder) PublishBundledAsset(_, _, _ string) error { return nil }
+
 func (r *selectorCallbackRecorder) Selector_OnProxySelected(
 	instanceToken int64,
 	selectorTag string,

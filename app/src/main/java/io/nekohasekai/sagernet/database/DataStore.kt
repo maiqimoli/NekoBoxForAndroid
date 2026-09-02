@@ -51,8 +51,6 @@ object DataStore : OnPreferenceDataStoreChangeListener {
 
     // main
 
-    var runningTest = false
-
     private val groupSelectionMutex = Mutex()
 
     suspend fun currentGroupId(): Long = withContext(Dispatchers.IO) {

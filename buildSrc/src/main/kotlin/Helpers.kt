@@ -1,8 +1,5 @@
-@file:Suppress("DEPRECATION") // AGP 旧变体 API（AbstractAppExtension）为构建脚本兼容使用
-
 import com.android.build.api.dsl.ApplicationExtension
-import com.android.build.gradle.AbstractAppExtension
-import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
@@ -13,6 +10,8 @@ import java.util.Base64
 import java.util.Properties
 
 private val Project.android get() = extensions.getByName<ApplicationExtension>("android")
+private val Project.androidComponents
+    get() = extensions.getByName<ApplicationAndroidComponentsExtension>("androidComponents")
 
 private lateinit var metadata: Properties
 private lateinit var localProperties: Properties
@@ -52,6 +51,16 @@ fun Project.setupCommon() {
         buildTypes {
             getByName("release") {
                 isMinifyEnabled = true
+                isShrinkResources = true
+                if (System.getenv("nkmr_minify") == "0") {
+                    isShrinkResources = false
+                    isMinifyEnabled = false
+                }
+            }
+            getByName("debug") {
+                applicationIdSuffix = "debug"
+                isDebuggable = true
+                isJniDebuggable = true
             }
         }
         compileOptions {
@@ -84,31 +93,6 @@ fun Project.setupCommon() {
                     "okhttp3/**"
                 )
             )
-        }
-        @Suppress("DEPRECATION") // AGP 变体 API 旧 DSL；迁移需重构 onVariants 回调
-        (this as? AbstractAppExtension)?.apply {
-            buildTypes {
-                getByName("release") {
-                    isShrinkResources = true
-                    if (System.getenv("nkmr_minify") == "0") {
-                        isShrinkResources = false
-                        isMinifyEnabled = false
-                    }
-                }
-                getByName("debug") {
-                    applicationIdSuffix = "debug"
-                    isDebuggable = true
-                    isJniDebuggable = true
-                }
-            }
-            applicationVariants.forEach { variant ->
-                variant.outputs.forEach {
-                    it as BaseVariantOutputImpl
-                    it.outputFileName = it.outputFileName.replace(
-                        "app", "${project.name}-" + variant.versionName
-                    ).replace("-release", "").replace("-oss", "")
-                }
-            }
         }
     }
 
@@ -172,6 +156,7 @@ fun Project.setupAppCommon() {
 fun Project.setupApp() {
     val pkgName = requireMetadata().getProperty("PACKAGE_NAME")
     val verName = requireMetadata().getProperty("VERSION_NAME")
+    val preVersionName = requireMetadata().getProperty("PRE_VERSION_NAME")
     val verCode = (requireMetadata().getProperty("VERSION_CODE").toInt()) * 5
     android.apply {
         defaultConfig {
@@ -184,9 +169,6 @@ fun Project.setupApp() {
     setupAppCommon()
 
     android.apply {
-        @Suppress("DEPRECATION", "UNUSED_VARIABLE") // AGP 变体 API 旧 DSL
-        val appExt = this as AbstractAppExtension
-
         buildTypes {
             getByName("release") {
                 proguardFiles(
@@ -215,25 +197,8 @@ fun Project.setupApp() {
                 buildConfigField(
                     "String",
                     "PRE_VERSION_NAME",
-                    "\"${requireMetadata().getProperty("PRE_VERSION_NAME")}\""
+                    "\"$preVersionName\""
                 )
-            }
-        }
-
-        applicationVariants.all {
-            outputs.all {
-                this as BaseVariantOutputImpl
-                val isPreview = outputFileName.contains("-preview")
-                outputFileName = if (isPreview) {
-                    outputFileName.replace(
-                        project.name,
-                        "NekoBox-" + requireMetadata().getProperty("PRE_VERSION_NAME")
-                    ).replace("-preview", "")
-                } else {
-                    outputFileName.replace(project.name, "NekoBox-$versionName")
-                        .replace("-release", "")
-                        .replace("-oss", "")
-                }
             }
         }
 
@@ -244,7 +209,24 @@ fun Project.setupApp() {
         }
 
         sourceSets.getByName("main").apply {
-            jniLibs.srcDir("executableSo")
+            jniLibs.directories.add("executableSo")
+        }
+    }
+
+    androidComponents.onVariants { variant ->
+        val flavorName = variant.flavorName
+        val versionName = if (flavorName == "preview") preVersionName else verName
+        val flavorSuffix = when (flavorName) {
+            "", "oss", "preview" -> ""
+            else -> "-$flavorName"
+        }
+        val buildTypeSuffix = if (variant.buildType == "release") "" else "-${variant.buildType}"
+
+        variant.outputs.forEach { output ->
+            val filterSuffix = output.filters.joinToString(separator = "") { "-${it.identifier}" }
+            output.outputFileName.set(
+                "NekoBox-$versionName$flavorSuffix$filterSuffix$buildTypeSuffix.apk"
+            )
         }
     }
 }

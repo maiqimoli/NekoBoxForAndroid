@@ -16,6 +16,7 @@ local.properties
 /service_account_credentials.json
 /release.keystore
 /release.keystore.local
+/libcore/libcore-build.log
 /device-configuration.db
 /device-current.png
 /device-sager_net.db

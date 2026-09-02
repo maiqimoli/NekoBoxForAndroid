@@ -108,7 +108,7 @@ func (p *pathPublication) rollback() error {
 }
 
 func reserveSiblingPath(path, suffixPattern string) (string, error) {
-	file, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+suffixPattern)
+	file, err := createSiblingTemp(path, suffixPattern)
 	if err != nil {
 		return "", err
 	}
@@ -119,29 +119,22 @@ func reserveSiblingPath(path, suffixPattern string) (string, error) {
 	return temporaryPath, nil
 }
 
+func createSiblingTemp(path, suffixPattern string) (*os.File, error) {
+	return os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+suffixPattern)
+}
+
 func Unxz(archive string, path string) error {
-	input, err := os.Open(archive)
+	output, err := createSiblingTemp(path, ".unxz-*")
 	if err != nil {
 		return err
 	}
-
-	reader, err := xz.NewReader(input)
-	if err != nil {
-		return errors.Join(err, input.Close())
-	}
-	stagedPath, err := reserveSiblingPath(path, ".unxz-*")
-	if err != nil {
-		return errors.Join(err, input.Close())
-	}
+	stagedPath := output.Name()
 	defer os.Remove(stagedPath)
 
-	output, err := os.OpenFile(stagedPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return errors.Join(err, input.Close())
+	if err := unxzToFile(archive, output); err != nil {
+		return errors.Join(err, output.Close())
 	}
-	_, copyErr := io.Copy(output, reader)
-	closeErr := errors.Join(output.Close(), input.Close())
-	if err := errors.Join(copyErr, closeErr); err != nil {
+	if err := output.Close(); err != nil {
 		return err
 	}
 
@@ -151,6 +144,22 @@ func Unxz(archive string, path string) error {
 	}
 	publication.commit()
 	return nil
+}
+
+// unxzToFile writes an archive into a caller-owned temporary file and makes
+// the complete output durable before it can be closed and published by rename.
+func unxzToFile(archive string, output *os.File) error {
+	input, err := os.Open(archive)
+	if err != nil {
+		return err
+	}
+	reader, err := xz.NewReader(input)
+	if err != nil {
+		return errors.Join(err, input.Close())
+	}
+	_, copyErr := io.Copy(output, reader)
+	syncErr := output.Sync()
+	return errors.Join(copyErr, syncErr, input.Close())
 }
 
 func Unzip(archive string, path string) (err error) {

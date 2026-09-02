@@ -1,4 +1,7 @@
-@file:Suppress("UnstableApiUsage", "DEPRECATION")
+@file:Suppress("UnstableApiUsage")
+
+import com.android.build.api.dsl.ApplicationExtension
+import org.gradle.kotlin.dsl.configure
 
 plugins {
     id("com.android.application")
@@ -17,19 +20,19 @@ if (project.findProperty("signWithDebug") == "true") {
     if (releaseSigningRequired) {
         throw GradleException("signWithDebug cannot be used when release signing is required")
     }
-    android {
+    configure<ApplicationExtension> {
         buildTypes {
             getByName("release").signingConfig = signingConfigs.getByName("debug")
         }
     }
 }
 
-android {
+configure<ApplicationExtension> {
     defaultConfig {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     sourceSets.getByName("androidTest") {
-        assets.srcDir("$projectDir/schemas")
+        assets.directories.add("$projectDir/schemas")
     }
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -107,6 +110,8 @@ dependencies {
     ksp("com.github.MatrixDev.Roomigrant:RoomigrantCompiler:0.3.4")
 
     testImplementation("junit:junit:4.13.2")
+    // Android's org.json classes are throwing stubs in local JVM tests.
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.room:room-testing:2.7.2")

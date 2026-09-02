@@ -40,6 +40,11 @@ import moe.matsuri.nb4a.proxy.config.ConfigSettingActivity
 import moe.matsuri.nb4a.proxy.neko.*
 import moe.matsuri.nb4a.proxy.shadowtls.ShadowTLSSettingsActivity
 
+data class ProxyOrderUpdate(
+    val profileId: Long,
+    val userOrder: Long,
+)
+
 @Entity(
     tableName = "proxy_entities", indices = [Index("groupId", name = "groupId")]
 )
@@ -485,10 +490,10 @@ data class ProxyEntity(
         @Query("select * from proxy_entities")
         fun getAll(): List<ProxyEntity>
 
-        @Query("SELECT id FROM proxy_entities WHERE groupId = :groupId ORDER BY userOrder")
+        @Query("SELECT id FROM proxy_entities WHERE groupId = :groupId ORDER BY userOrder, id")
         fun getIdsByGroup(groupId: Long): List<Long>
 
-        @Query("SELECT * FROM proxy_entities WHERE groupId = :groupId ORDER BY userOrder")
+        @Query("SELECT * FROM proxy_entities WHERE groupId = :groupId ORDER BY userOrder, id")
         fun getByGroup(groupId: Long): List<ProxyEntity>
 
         @Query("SELECT * FROM proxy_entities WHERE id in (:proxyIds)")
@@ -523,6 +528,30 @@ data class ProxyEntity(
 
         @Update
         fun updateProxy(proxies: List<ProxyEntity>): Int
+
+        @Query(
+            "UPDATE proxy_entities SET userOrder = :userOrder " +
+                    "WHERE id = :profileId AND groupId = :groupId"
+        )
+        fun updateUserOrder(groupId: Long, profileId: Long, userOrder: Long): Int
+
+        @Transaction
+        fun updateUserOrders(groupId: Long, updates: List<ProxyOrderUpdate>) {
+            updates.forEach { update ->
+                updateUserOrder(groupId, update.profileId, update.userOrder)
+            }
+        }
+
+        @Query(
+            "UPDATE proxy_entities SET status = :status, ping = :ping, error = :error " +
+                    "WHERE id = :profileId"
+        )
+        fun updateConnectionTestResult(
+            profileId: Long,
+            status: Int,
+            ping: Int,
+            error: String?,
+        ): Int
 
         @Query("UPDATE proxy_entities SET rx = :rx, tx = :tx WHERE id = :proxyId")
         fun updateTraffic(proxyId: Long, rx: Long, tx: Long): Int

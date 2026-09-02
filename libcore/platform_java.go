@@ -8,6 +8,7 @@ var isBgProcess bool
 
 type NB4AInterface interface {
 	UseOfficialAssets() bool
+	PublishBundledAsset(name string, bundledVersion string, stagedAssetPath string) error
 	Selector_OnProxySelected(instanceToken int64, selectorTag string, tag string)
 }
 

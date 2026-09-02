@@ -35,9 +35,16 @@ internal object SubscriptionImportHelper {
 
         val looseQueryParameters = parseLooseParameters(encodedQuery)
         val looseFragmentParameters = parseLooseParameters(encodedFragment)
+        val safeQueryParameter: (String) -> String? = { key ->
+            try {
+                queryParameter(key)
+            } catch (error: RuntimeException) {
+                throw MalformedSubscriptionLinkException(error)
+            }
+        }
 
         val link = sequenceOf(
-            directUrlKeys.firstNotNullOfOrNull { key -> normalizeSubscriptionUrl(queryParameter(key)) },
+            directUrlKeys.firstNotNullOfOrNull { key -> normalizeSubscriptionUrl(safeQueryParameter(key)) },
             directUrlKeys.firstNotNullOfOrNull { key -> normalizeSubscriptionUrl(looseFragmentParameters[key]) },
             directUrlKeys.firstNotNullOfOrNull { key -> normalizeSubscriptionUrl(looseQueryParameters[key]) },
             normalizeSubscriptionUrl(encodedPath?.removePrefix("/")),
@@ -46,7 +53,7 @@ internal object SubscriptionImportHelper {
         ).firstNotNullOfOrNull { it } ?: return null
 
         val explicitName = sequenceOf(
-            displayNameKeys.firstNotNullOfOrNull { key -> queryParameter(key)?.trim()?.takeIf { it.isNotEmpty() } },
+            displayNameKeys.firstNotNullOfOrNull { key -> safeQueryParameter(key)?.trim()?.takeIf { it.isNotEmpty() } },
             displayNameKeys.firstNotNullOfOrNull { key -> looseFragmentParameters[key]?.trim()?.takeIf { it.isNotEmpty() } },
             displayNameKeys.firstNotNullOfOrNull { key -> looseQueryParameters[key]?.trim()?.takeIf { it.isNotEmpty() } },
         ).firstNotNullOfOrNull { it }
@@ -91,6 +98,13 @@ internal object SubscriptionImportHelper {
     }
 
     private fun decodeComponent(value: String): String {
-        return URLDecoder.decode(value, StandardCharsets.UTF_8.name())
+        return try {
+            URLDecoder.decode(value, StandardCharsets.UTF_8.name())
+        } catch (error: IllegalArgumentException) {
+            throw MalformedSubscriptionLinkException(error)
+        }
     }
 }
+
+internal class MalformedSubscriptionLinkException(cause: Throwable) :
+    IllegalArgumentException("Malformed subscription link", cause)

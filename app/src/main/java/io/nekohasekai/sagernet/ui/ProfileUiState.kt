@@ -115,6 +115,24 @@ object ProfileUiState {
         pendingTestRecords[profileId] = ProfileTestRecord(timestampSeconds, method)
     }
 
+    /**
+     * Records timestamps only for connection-test results that have already been written to the
+     * profile database.
+     */
+    @Synchronized
+    fun recordPersistedTests(records: Map<Long, ProfileTestRecord>) {
+        val committed = records.filter { (profileId, record) ->
+            profileId > 0L && record.timestampSeconds > 0L
+        }
+        if (committed.isEmpty()) return
+        val values = LinkedHashMap(persistedTestRecords())
+        values.putAll(committed)
+        saveTestRecords(values)
+        committed.forEach { (profileId, record) ->
+            pendingTestRecords.remove(profileId, record)
+        }
+    }
+
     @Synchronized
     fun flushTested(profileIds: Collection<Long>) {
         if (profileIds.isEmpty()) return

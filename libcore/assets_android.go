@@ -28,9 +28,9 @@ func extractAssets() error {
 	return extractErr
 }
 
-// extractAssetName publishes the asset and its version marker as one logical
-// update. Both files are prepared first, and the old asset remains available
-// until the new version marker has also been published.
+// extractAssetName prepares bundled assets. Replaceable rule databases are
+// committed by the Android side so startup extraction, imports, downloads, and
+// recovery all share one cross-process transaction protocol.
 func extractAssetName(name string, useOfficialAssets bool) error {
 	replaceable := true
 	var version, apkPrefix string
@@ -81,6 +81,21 @@ func extractAssetName(name string, useOfficialAssets bool) error {
 	stagedAsset, cleanupAsset, err := stageBundledAsset(name, apkPrefix, directory, destination)
 	if err != nil {
 		return err
+	}
+	if replaceable {
+		// Ownership of stagedAsset transfers to the Android transaction policy. It either
+		// installs/cleans it or preserves it with recovery metadata after an interrupted commit.
+		if name == geoipDat {
+			if err := ValidateGeoIP(stagedAsset); err != nil {
+				cleanupAsset()
+				return fmt.Errorf("validate bundled GeoIP database: %w", err)
+			}
+		}
+		if err := intfNB4A.PublishBundledAsset(name, string(assetVersion), stagedAsset); err != nil {
+			return fmt.Errorf("publish bundled asset transaction: %w", err)
+		}
+		log.Println("Extract >>", destination)
+		return nil
 	}
 	defer cleanupAsset()
 
@@ -144,15 +159,21 @@ func assetNeedsExtraction(destination, versionPath, name, assetVersion string, r
 func stageBundledAsset(name, apkPrefix, directory, destination string) (stagedPath string, cleanup func(), err error) {
 	switch name {
 	case geoipDat, geositeDat:
-		compressedPath, err := reserveSiblingPath(destination, ".archive-*")
+		compressedFile, err := os.CreateTemp(directory, ".asset-archive-*.tmp")
 		if err != nil {
-			return "", nil, fmt.Errorf("reserve compressed asset path: %w", err)
+			return "", nil, fmt.Errorf("create compressed asset file: %w", err)
 		}
-		stagedPath, err := reserveSiblingPath(destination, ".staged-*")
+		compressedPath := compressedFile.Name()
+		stagedFile, err := os.CreateTemp(directory, ".asset-*.tmp")
 		if err != nil {
-			return "", nil, fmt.Errorf("reserve staged asset path: %w", err)
+			_ = compressedFile.Close()
+			_ = os.Remove(compressedPath)
+			return "", nil, fmt.Errorf("create staged asset file: %w", err)
 		}
+		stagedPath = stagedFile.Name()
 		cleanup = func() {
+			_ = compressedFile.Close()
+			_ = stagedFile.Close()
 			_ = os.Remove(compressedPath)
 			_ = os.Remove(stagedPath)
 		}
@@ -161,13 +182,17 @@ func stageBundledAsset(name, apkPrefix, directory, destination string) (stagedPa
 			cleanup()
 			return "", nil, fmt.Errorf("open compressed bundled asset: %w", err)
 		}
-		if err := extractAsset(assetFile, compressedPath); err != nil {
+		if err := extractAsset(assetFile, compressedFile); err != nil {
 			cleanup()
 			return "", nil, fmt.Errorf("copy compressed bundled asset: %w", err)
 		}
-		if err := Unxz(compressedPath, stagedPath); err != nil {
+		if err := unxzToFile(compressedPath, stagedFile); err != nil {
 			cleanup()
 			return "", nil, fmt.Errorf("decompress bundled asset: %w", err)
+		}
+		if err := stagedFile.Close(); err != nil {
+			cleanup()
+			return "", nil, fmt.Errorf("close staged asset: %w", err)
 		}
 		if err := os.Remove(compressedPath); err != nil && !os.IsNotExist(err) {
 			cleanup()
@@ -176,15 +201,19 @@ func stageBundledAsset(name, apkPrefix, directory, destination string) (stagedPa
 		return stagedPath, cleanup, nil
 
 	case yacdDstFolder:
-		archivePath, err := reserveSiblingPath(destination, ".archive-*")
+		archiveFile, err := createSiblingTemp(destination, ".archive-*")
 		if err != nil {
-			return "", nil, fmt.Errorf("reserve dashboard archive path: %w", err)
+			return "", nil, fmt.Errorf("create dashboard archive file: %w", err)
 		}
+		archivePath := archiveFile.Name()
 		extractRoot, err := os.MkdirTemp(directory, ".yacd-staged-*")
 		if err != nil {
+			_ = archiveFile.Close()
+			_ = os.Remove(archivePath)
 			return "", nil, fmt.Errorf("create dashboard staging directory: %w", err)
 		}
 		cleanup = func() {
+			_ = archiveFile.Close()
 			_ = os.Remove(archivePath)
 			_ = os.RemoveAll(extractRoot)
 		}
@@ -193,7 +222,7 @@ func stageBundledAsset(name, apkPrefix, directory, destination string) (stagedPa
 			cleanup()
 			return "", nil, fmt.Errorf("open bundled dashboard: %w", err)
 		}
-		if err := extractAsset(assetFile, archivePath); err != nil {
+		if err := extractAsset(assetFile, archiveFile); err != nil {
 			cleanup()
 			return "", nil, fmt.Errorf("copy bundled dashboard: %w", err)
 		}
@@ -242,14 +271,12 @@ func readBundledAsset(name string) ([]byte, error) {
 	return content, nil
 }
 
-func extractAsset(input asset.File, destination string) error {
-	output, err := os.OpenFile(destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
-	if err != nil {
-		return errors.Join(err, input.Close())
-	}
+func extractAsset(input asset.File, output *os.File) error {
+	destination := output.Name()
 	_, copyErr := io.Copy(output, input)
+	syncErr := output.Sync()
 	closeErr := errors.Join(output.Close(), input.Close())
-	if err := errors.Join(copyErr, closeErr); err != nil {
+	if err := errors.Join(copyErr, syncErr, closeErr); err != nil {
 		_ = os.Remove(destination)
 		return err
 	}
