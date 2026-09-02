@@ -289,6 +289,16 @@ jobs:
           "platform-tools"
           "system-images;android-35;aosp_atd;x86_64"
 
+      - name: Enable KVM acceleration
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "/dev/kvm is unavailable" >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -accel-check
+
       - name: Download native library
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -309,6 +319,8 @@ jobs:
           readonly avd_name="nb4a-ci-api-35"
           readonly system_image="system-images;android-35;aosp_atd;x86_64"
           readonly emulator_log="$RUNNER_TEMP/android-emulator.log"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
 
           printf 'sdk.dir=%s\nndk.dir=%s/ndk/%s\n' "$ANDROID_HOME" "$ANDROID_HOME" "$NDK_VERSION" > local.properties
           ./run init action gradle
@@ -330,16 +342,34 @@ jobs:
           emulator_pid=$!
 
           cleanup() {
+            local exit_code=$?
+            trap - EXIT
+            if (( exit_code != 0 )); then
+              echo "::group::Android emulator log" >&2
+              cat "$emulator_log" >&2 || true
+              echo "::endgroup::" >&2
+            fi
             adb emu kill >/dev/null 2>&1 || true
             kill "$emulator_pid" >/dev/null 2>&1 || true
             wait "$emulator_pid" >/dev/null 2>&1 || true
+            exit "$exit_code"
           }
           trap cleanup EXIT
 
-          adb wait-for-device
+          readonly adb_deadline=$((SECONDS + 300))
+          until [[ "$(adb get-state 2>/dev/null || true)" == "device" ]]; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "Android emulator exited before connecting to adb" >&2
+              exit 1
+            fi
+            if (( SECONDS >= adb_deadline )); then
+              echo "Timed out waiting 300 seconds for Android emulator to connect to adb" >&2
+              exit 1
+            fi
+            sleep 5
+          done
           if ! timeout 300 bash -c \
             'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == "1" ]]; do sleep 5; done'; then
-            cat "$emulator_log" >&2
             exit 1
           fi
 
