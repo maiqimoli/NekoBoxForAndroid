@@ -94,6 +94,9 @@ jobs:
       - name: Verify native 16 KB alignment
         run: bash buildScript/check_elf_alignment.sh app/libs/libcore.aar
 
+      - name: Install pinned sing-box assets
+        run: bash buildScript/lib/assets.sh
+
       - name: Run Go tests
         working-directory: libcore
         run: go test ./...

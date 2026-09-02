@@ -115,6 +115,11 @@ jobs:
           cache-dependency-path: libcore/go.sum
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: ""
+
       - name: Install Android SDK components
         run: >-
           sdkmanager
@@ -143,6 +148,9 @@ jobs:
 
       - name: Verify native 16 KB alignment
         run: bash buildScript/check_elf_alignment.sh app/libs/libcore.aar
+
+      - name: Install pinned sing-box assets
+        run: bash buildScript/lib/assets.sh
 
       - name: Run Go tests
         working-directory: libcore
@@ -188,6 +196,11 @@ jobs:
             nb4a.properties
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: ""
 
       - name: Install Android SDK components
         run: >-
@@ -427,6 +440,11 @@ jobs:
             nb4a.properties
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: ""
 
       - name: Install Android SDK components
         run: >-
